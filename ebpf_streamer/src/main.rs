@@ -7,11 +7,13 @@ use async_channel;
 use smol::block_on;
 use ldms_stream::{SockStream};
 use clap::Parser;
+use minicbor::{Decoder};
+use serde::{Serialize};
 
 #[derive(Parser)]
 #[command(name = "ebpf_streamer")]
 #[command(author = "Ershaad Basheer <ebasheer@lbl.gov>")]
-#[command(version = "0.1")]
+#[command(version = "0.2")]
 #[command(about = "Stream count of slow function calls to LDMS", long_about = None)]
 struct EbpfStreamer {
     #[arg(id="stream",long,default_value_t = String::from("nersc"),value_name="STREAM")]
@@ -26,14 +28,23 @@ struct EbpfStreamer {
     authentication: String,
 }
 
+#[derive(Serialize)]
+struct Sample {
+    name: String,
+    value: u64,
+}
+
 async fn ring_next(stream: SockStream, ring_buf: RingBuf<MapData>) -> anyhow::Result<()> {
     let mut ring_buf_f = Async::new(ring_buf)?;
     loop {
         let _ = ring_buf_f.readable().await;
         while let Some(item) = ring_buf_f.get_mut().next() {
-            let count = u64::from_ne_bytes(item[..8].try_into().unwrap());
-            let msg = format!("{{\"count\": {:?}}}", count);
-            println!("{}", msg);
+            println!("length: {}", item.len());
+            let mut de = Decoder::new(&item);
+            let name = de.str().unwrap();
+            let value = de.u64().unwrap();
+            let sample = Sample { name: name.to_string(), value };
+            let msg = serde_json::to_string(&sample)?;
             stream.ldms_stream_publish(&msg)?;
         }
     }
