@@ -1,0 +1,17 @@
+[package]
+name = "ebpf_streamer-ebpf"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ebpf_streamer-common = { path = "../ebpf_streamer-common" }
+
+aya-ebpf = { workspace = true }
+aya-log-ebpf = { workspace = true }
+
+[build-dependencies]
+which = { workspace = true }
+
+[[bin]]
+name = "ebpf_streamer"
+path = "src/main.rs"

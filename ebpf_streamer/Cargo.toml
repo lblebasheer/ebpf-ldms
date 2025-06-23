@@ -1,0 +1,57 @@
+[package]
+name = "ebpf_streamer"
+version = "0.1.0"
+edition = "2021"
+
+license.workspace = true
+
+[dependencies]
+ebpf_streamer-common = { path = "../ebpf_streamer-common", features = ["user"] }
+
+anyhow = { workspace = true, default-features = true }
+aya = { workspace = true }
+aya-log = { workspace = true }
+env_logger = { workspace = true }
+libc = { workspace = true }
+log = { workspace = true }
+tokio = { workspace = true, features = [
+    "macros",
+    "rt",
+    "rt-multi-thread",
+    "net",
+    "signal",
+] }
+smol = "2.0.2"
+ctrlc = "3.4.7"
+time = "0.3.41"
+async-io = "1.13.0"
+async-channel = "2.3.1"
+nix = { version = "0.30.1", features = ["time"] }
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.140"
+serde-transcode = "1.1.1"
+minicbor-serde = "0.5.0"
+minicbor = { version = "1.0.0", features = ["derive"] }
+clap = { version = "4.5.40", features = ["derive"] }
+ciborium = "0.2.2"
+ldms_stream = { version = "0.1.0", path = "../ldms_stream" }
+[build-dependencies]
+anyhow = { workspace = true }
+aya-build = { workspace = true }
+# TODO(https://github.com/rust-lang/cargo/issues/12375): this should be an artifact dependency, but
+# it's not possible to tell cargo to use `-Z build-std` to build it. We cargo-in-cargo in the build
+# script to build this, but we want to teach cargo about the dependecy so that cache invalidation
+# works properly.
+#
+# Note also that https://github.com/rust-lang/cargo/issues/10593 occurs when `target = ...` is added
+# to an artifact dependency; it seems possible to work around that by setting `resolver = "1"` in
+# Cargo.toml in the workspace root.
+#
+# Finally note that *any* usage of `artifact = ...` in *any* Cargo.toml in the workspace breaks
+# workflows with stable cargo; stable cargo outright refuses to load manifests that use unstable
+# features.
+ebpf_streamer-ebpf = { path = "../ebpf_streamer-ebpf" }
+
+[[bin]]
+name = "ebpf_streamer"
+path = "src/main.rs"
