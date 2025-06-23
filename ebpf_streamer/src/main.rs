@@ -7,7 +7,7 @@ use async_channel;
 use smol::block_on;
 use ldms_stream::{SockStream};
 use clap::Parser;
-use minicbor::{Decoder};
+use ciborium::{Value,de::from_reader};
 use serde::{Serialize};
 
 #[derive(Parser)]
@@ -40,11 +40,8 @@ async fn ring_next(stream: SockStream, ring_buf: RingBuf<MapData>) -> anyhow::Re
         let _ = ring_buf_f.readable().await;
         while let Some(item) = ring_buf_f.get_mut().next() {
             println!("length: {}", item.len());
-            let mut de = Decoder::new(&item);
-            let name = de.str().unwrap();
-            let value = de.u64().unwrap();
-            let sample = Sample { name: name.to_string(), value };
-            let msg = serde_json::to_string(&sample)?;
+            let v: Value = from_reader(&item as &[u8]).unwrap();
+            let msg = serde_json::to_string(&v)?;
             stream.ldms_stream_publish(&msg)?;
         }
     }

@@ -34,6 +34,7 @@ serde-transcode = "1.1.1"
 minicbor-serde = "0.5.0"
 minicbor = { version = "1.0.0", features = ["derive"] }
 clap = { version = "4.5.40", features = ["derive"] }
+ciborium = "0.2.2"
 [build-dependencies]
 anyhow = { workspace = true }
 aya-build = { workspace = true }
