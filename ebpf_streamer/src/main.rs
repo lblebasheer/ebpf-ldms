@@ -5,10 +5,10 @@ use std::convert::TryFrom;
 use async_io::Async;
 use async_channel;
 use smol::block_on;
-use ldms_stream::{SockStream};
+use ldms_stream::SockStream;
 use clap::Parser;
 use ciborium::{Value,de::from_reader};
-use serde::{Serialize};
+use serde::Serialize;
 
 #[derive(Parser)]
 #[command(name = "ebpf_streamer")]
