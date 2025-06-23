@@ -8,7 +8,6 @@ use smol::block_on;
 use ldms_stream::SockStream;
 use clap::Parser;
 use ciborium::{Value,de::from_reader};
-use serde::Serialize;
 
 #[derive(Parser)]
 #[command(name = "ebpf_streamer")]
@@ -26,12 +25,6 @@ struct EbpfStreamer {
     port: String,
     #[arg(id="authentication",long,default_value_t = String::from("none"),value_name="none|munge")]
     authentication: String,
-}
-
-#[derive(Serialize)]
-struct Sample {
-    name: String,
-    value: u64,
 }
 
 async fn ring_next(stream: SockStream, ring_buf: RingBuf<MapData>) -> anyhow::Result<()> {
