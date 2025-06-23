@@ -1,5 +1,5 @@
-use std::ffi::{CString};
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
+use std::ffi::CString;
 use std::ptr;
 
 mod raw;
@@ -22,7 +22,10 @@ impl SockStream {
         let c_auth = match auth {
             "none" => Ok(CString::new(auth)?),
             "munge" => Ok(CString::new(auth)?),
-            _ => Err(anyhow!("Unsupported or unimplemented authentication: {}", auth)),
+            _ => Err(anyhow!(
+                "Unsupported or unimplemented authentication: {}",
+                auth
+            )),
         }?;
         let c_host = CString::new(host)?;
         let c_port = CString::new(port)?;
@@ -34,7 +37,9 @@ impl SockStream {
             raw::ldms_xprt_new_with_auth(c_xprt.as_ptr(), null_log, c_auth.as_ptr(), null_value)
         };
         if xprt_handle.is_null() {
-            return Err(anyhow!("ldms_xprt_new_with_auth: Failed to create new transport"));
+            return Err(anyhow!(
+                "ldms_xprt_new_with_auth: Failed to create new transport"
+            ));
         }
         Ok(SockStream {
             c_host,
@@ -49,10 +54,19 @@ impl SockStream {
         let null_arg: *const raw::cb_arg = ptr::null();
 
         let rc = unsafe {
-            raw::ldms_xprt_connect_by_name(self.xprt_handle, self.c_host.as_ptr(), self.c_port.as_ptr(), null_event, null_arg)
+            raw::ldms_xprt_connect_by_name(
+                self.xprt_handle,
+                self.c_host.as_ptr(),
+                self.c_port.as_ptr(),
+                null_event,
+                null_arg,
+            )
         };
         if rc != 0 {
-            return Err(anyhow!("ldms_xprt_connect_by_name: Failed to connect transport: {}", rc));
+            return Err(anyhow!(
+                "ldms_xprt_connect_by_name: Failed to connect transport: {}",
+                rc
+            ));
         }
         Ok(())
     }
@@ -66,7 +80,8 @@ impl SockStream {
                 self.c_stream.as_ptr(),
                 raw::ldmsd_stream_type_t::LDMSD_STREAM_JSON,
                 c_message.as_ptr(),
-                (c_message.count_bytes() + 1) as u64)
+                (c_message.count_bytes() + 1) as u64,
+            )
         };
         if rc != 0 {
             return Err(anyhow!("ldmsd_steam_publish: failed: {}", rc));
@@ -74,4 +89,3 @@ impl SockStream {
         Ok(())
     }
 }
-
