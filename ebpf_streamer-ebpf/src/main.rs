@@ -1,7 +1,7 @@
 #![no_std]
 #![no_main]
 
-use aya_ebpf::{maps::RingBuf,macros::map};
+use aya_ebpf::{macros::map, maps::RingBuf};
 
 #[map]
 static LDMS_SHARED_STREAM: RingBuf = RingBuf::pinned(1024, 0);

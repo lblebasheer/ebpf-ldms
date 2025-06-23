@@ -1,13 +1,13 @@
 #[rustfmt::skip]
 use log::{debug, warn};
-use aya::maps::{RingBuf, MapData};
-use std::convert::TryFrom;
-use async_io::Async;
 use async_channel;
-use smol::block_on;
-use ldms_stream::SockStream;
+use async_io::Async;
+use aya::maps::{MapData, RingBuf};
+use ciborium::{de::from_reader, Value};
 use clap::Parser;
-use ciborium::{Value,de::from_reader};
+use ldms_stream::SockStream;
+use smol::block_on;
+use std::convert::TryFrom;
 
 #[derive(Parser)]
 #[command(name = "ebpf_streamer")]
@@ -17,7 +17,7 @@ use ciborium::{Value,de::from_reader};
 struct EbpfStreamer {
     #[arg(id="stream",long,default_value_t = String::from("nersc"),value_name="STREAM")]
     stream: String,
-    #[arg(id="interval",long,default_value_t = 2.0,value_name="INTERVAL")]
+    #[arg(id = "interval", long, default_value_t = 2.0, value_name = "INTERVAL")]
     interval: f64,
     #[arg(id="host",long,default_value_t = String::from("localhost"),value_name="HOST")]
     host: String,
@@ -41,7 +41,7 @@ async fn ring_next(stream: SockStream, ring_buf: RingBuf<MapData>) -> anyhow::Re
 }
 
 fn main() -> anyhow::Result<()> {
-	let cli = EbpfStreamer::parse();
+    let cli = EbpfStreamer::parse();
     env_logger::init();
 
     // Bump the memlock rlimit. This is needed for older kernels that don't use the
@@ -68,13 +68,19 @@ fn main() -> anyhow::Result<()> {
         warn!("failed to initialize eBPF logger: {e}");
     }
 
-    let mut stream = SockStream::new("sock", &cli.authentication, &cli.host, &cli.port, &cli.stream)?;
+    let mut stream = SockStream::new(
+        "sock",
+        &cli.authentication,
+        &cli.host,
+        &cli.port,
+        &cli.stream,
+    )?;
     stream.connect()?;
 
     let ring_buf = RingBuf::try_from(ebpf.take_map("LDMS_SHARED_STREAM").unwrap()).unwrap();
     let readtask = smol::spawn(ring_next(stream, ring_buf));
 
-	let (s, ctrl_c) = async_channel::bounded(100);
+    let (s, ctrl_c) = async_channel::bounded(100);
     let handle = move || {
         s.try_send(()).ok();
     };
