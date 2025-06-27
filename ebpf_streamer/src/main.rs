@@ -1,12 +1,11 @@
 #[rustfmt::skip]
 use log::{debug, warn};
 use async_channel;
-use async_io::Async;
 use aya::maps::{MapData, RingBuf};
 use ciborium::{de::from_reader, Value};
 use clap::Parser;
 use ldms_stream::SockStream;
-use smol::block_on;
+use smol::{Async,block_on};
 use std::convert::TryFrom;
 
 #[derive(Parser)]
