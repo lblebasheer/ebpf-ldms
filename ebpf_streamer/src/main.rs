@@ -1,7 +1,7 @@
 #[rustfmt::skip]
 use log::{debug, warn};
 use async_channel;
-use aya::maps::{MapData, RingBuf};
+use aya::maps::{Map, MapData, RingBuf};
 use ciborium::{de::from_reader, Value};
 use clap::Parser;
 use ldms_stream::SockStream;
@@ -31,7 +31,7 @@ async fn ring_next(stream: SockStream, ring_buf: RingBuf<MapData>) -> anyhow::Re
     loop {
         let _ = ring_buf_f.readable().await;
         while let Some(item) = ring_buf_f.get_mut().next() {
-            println!("length: {}", item.len());
+            println!("{:?}", item);
             let v: Value = from_reader(&item as &[u8]).unwrap();
             let msg = serde_json::to_string(&v)?;
             stream.ldms_stream_publish(&msg)?;
@@ -54,18 +54,10 @@ fn main() -> anyhow::Result<()> {
         debug!("remove limit on locked memory failed, ret is: {ret}");
     }
 
-    // This will include your eBPF object file as raw bytes at compile-time and load it at
-    // runtime. This approach is recommended for most real-world use cases. If you would
-    // like to specify the eBPF program at runtime rather than at compile-time, you can
-    // reach for `Bpf::load_file` instead.
-    let mut ebpf = aya::Ebpf::load(aya::include_bytes_aligned!(concat!(
-        env!("OUT_DIR"),
-        "/ebpf_streamer"
-    )))?;
-    if let Err(e) = aya_log::EbpfLogger::init(&mut ebpf) {
-        // This can happen if you remove all log statements from your eBPF program.
-        warn!("failed to initialize eBPF logger: {e}");
-    }
+//    if let Err(e) = aya_log::EbpfLogger::init(&mut ebpf) {
+//        // This can happen if you remove all log statements from your eBPF program.
+//        warn!("failed to initialize eBPF logger: {e}");
+//    }
 
     let mut stream = SockStream::new(
         "sock",
@@ -76,7 +68,7 @@ fn main() -> anyhow::Result<()> {
     )?;
     stream.connect()?;
 
-    let ring_buf = RingBuf::try_from(ebpf.take_map("LDMS_SHARED_STREAM").unwrap()).unwrap();
+    let ring_buf = RingBuf::try_from(Map::RingBuf(MapData::from_pin("/sys/fs/bpf/LDMS_SHARED_STREAM").unwrap())).unwrap();
     let readtask = smol::spawn(ring_next(stream, ring_buf));
 
     let (s, ctrl_c) = async_channel::bounded(100);
