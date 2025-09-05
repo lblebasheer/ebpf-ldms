@@ -2,11 +2,16 @@
 use log::{debug, warn};
 use async_channel;
 use aya::maps::{Map, MapData, RingBuf};
-use ciborium::{de::from_reader, Value};
+use ciborium::{de::from_reader};
 use clap::Parser;
 use ldms_stream::SockStream;
 use smol::{Async,block_on};
-use std::convert::TryFrom;
+use std::{
+        convert::TryFrom,
+        collections::HashMap,
+        collections::hash_map::Entry,
+        time::Instant,
+};
 
 #[derive(Parser)]
 #[command(name = "ebpf_streamer")]
@@ -14,26 +19,70 @@ use std::convert::TryFrom;
 #[command(version = "0.2")]
 #[command(about = "Stream count of slow function calls to LDMS", long_about = None)]
 struct EbpfStreamer {
+    /// Name of LDMS stream to which messages are published
     #[arg(id="stream",long,default_value_t = String::from("nersc"),value_name="STREAM")]
     stream: String,
-    #[arg(id = "interval", long, default_value_t = 2.0, value_name = "INTERVAL")]
-    interval: f64,
+    /// Average message rate limit for an individual producer in messages/second
+    #[arg(id = "ratelimit", long, default_value_t = 2, value_name = "MSGPERSEC")]
+    ratelimit: u32,
+    /// Hostname or IP address of LDMS daemon
     #[arg(id="host",long,default_value_t = String::from("localhost"),value_name="HOST")]
     host: String,
+    /// TCP Port of LDMS daemon
     #[arg(id="port",long,default_value_t = String::from("60003"),value_name="PORT")]
     port: String,
+    /// Authentication method when connecting to LDMS daemon
     #[arg(id="authentication",long,default_value_t = String::from("none"),value_name="none|munge")]
     authentication: String,
 }
 
-async fn ring_next(stream: SockStream, ring_buf: RingBuf<MapData>) -> anyhow::Result<()> {
+async fn ring_loop(stream: SockStream, ring_buf: RingBuf<MapData>, ratelimit: u32) -> anyhow::Result<()> {
+    // track tokens for each producer sending messages to us
+    let mut producer_tokens: HashMap<(String, String), u32> = HashMap::new();
+    let maxtokens = match ratelimit {
+        0 => {
+            warn!("Invalid ratelimit. Setting to 1 message/sec");
+            1
+        },
+        i @ 1.. => i,
+    };
+    let mut window_start = Instant::now();
     let mut ring_buf_f = Async::new(ring_buf)?;
     loop {
         let _ = ring_buf_f.readable().await;
         while let Some(item) = ring_buf_f.get_mut().next() {
             println!("{:?}", item);
-            let v: Value = from_reader(&item as &[u8]).unwrap();
-            let msg = serde_json::to_string(&v)?;
+            let v: ciborium::Value = from_reader(&item as &[u8]).unwrap();
+            let serde_v = serde_json::to_value(v)?;
+
+            // ratelimit.
+            let (id, version) = (&serde_v["id"], &serde_v["version"]);
+            if *id == serde_json::Value::Null || *version == serde_json::Value::Null {
+                warn!("\"id\" or \"version\" fields not found in message. Skipping message.");
+                continue;
+            }
+            let _entry = producer_tokens.entry((id.to_string(), version.to_string())).or_insert(maxtokens);
+            let now = Instant::now();
+            if (now - window_start).as_millis() > 1000 {
+                window_start = now;
+                for v in producer_tokens.values_mut() {
+                    *v = maxtokens;
+                }
+                producer_tokens.entry((id.to_string(), version.to_string())).and_modify(|e| { *e = e.saturating_sub(1); });
+            } else {
+                let Entry::Occupied(mut entry) = producer_tokens.entry((id.to_string(), version.to_string())) else { 
+                    panic!("id: {id}, version: {version} not found in HashMap") 
+                };
+                let tokens = entry.get_mut();
+                if *tokens > 0 {
+                    *tokens -= 1;
+                } else {
+                    debug!("Token bucket empty for id: {id}, version: {version}. Skipping message.");
+                    continue;
+                }
+            }
+
+            let msg = serde_json::to_string(&serde_v)?;
             stream.ldms_stream_publish(&msg)?;
         }
     }
@@ -69,7 +118,7 @@ fn main() -> anyhow::Result<()> {
     stream.connect()?;
 
     let ring_buf = RingBuf::try_from(Map::RingBuf(MapData::from_pin("/sys/fs/bpf/LDMS_SHARED_STREAM").unwrap())).unwrap();
-    let readtask = smol::spawn(ring_next(stream, ring_buf));
+    let readtask = smol::spawn(ring_loop(stream, ring_buf, cli.ratelimit));
 
     let (s, ctrl_c) = async_channel::bounded(100);
     let handle = move || {
