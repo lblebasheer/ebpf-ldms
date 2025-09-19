@@ -16,13 +16,13 @@ use smol::{block_on, Async};
 #[derive(Parser)]
 #[command(name = "ebpf_streamer")]
 #[command(author = "Ershaad Basheer <ebasheer@lbl.gov>")]
-#[command(version = "0.2")]
+#[command(version = "0.3")]
 #[command(about = "Stream count of slow function calls to LDMS", long_about = None)]
 struct EbpfStreamer {
     /// Name of LDMS stream to which messages are published
     #[arg(id="stream",long,default_value_t = String::from("nersc"),value_name="STREAM")]
     stream: String,
-    /// Average message rate limit for an individual producer in messages/period (see --period)
+    /// Average message rate limit for an individual producer in messages/interval (see --interval)
     #[arg(
         id = "msglimit",
         long,
@@ -30,9 +30,9 @@ struct EbpfStreamer {
         value_name = "MSGPERPERIOD"
     )]
     msglimit: u32,
-    /// Length of period over which message limiting is calculated in seconds
-    #[arg(id = "period", long, default_value_t = 1, value_name = "MSGPERIOD")]
-    period: u32,
+    /// Length of time interval over which message limits are calculated. In seconds
+    #[arg(id = "interval", long, default_value_t = 1, value_name = "INTERVAL")]
+    interval: u32,
     /// Hostname or IP address of LDMS daemon
     #[arg(id="host",long,default_value_t = String::from("localhost"),value_name="HOST")]
     host: String,
@@ -48,21 +48,21 @@ async fn ring_loop(
     stream: SockStream,
     ring_buf: RingBuf<MapData>,
     msglimit: u32,
-    period: u32,
+    interval: u32,
 ) -> anyhow::Result<()> {
     // track tokens for each producer sending messages to us
     let mut producer_tokens: HashMap<(String, String), u32> = HashMap::new();
-    let (maxtokens, period) = match (msglimit, period) {
+    let (maxtokens, interval) = match (msglimit, interval) {
         (0, 0) => {
-            warn!("Invalid msglimit and period. Setting to 1 msg/second");
+            warn!("Invalid msglimit and interval. Setting to 1 msg/second");
             (1, 1)
         }
         (0, j @ 1..) => {
-            warn!("Invalid msglimit. Setting to 1 msg/{period} second(s)");
+            warn!("Invalid msglimit. Setting to 1 msg/{interval} second(s)");
             (1, j)
         }
         (i @ 1.., 0) => {
-            warn!("Invalid period. Setting to 1 second");
+            warn!("Invalid interval. Setting to 1 second");
             (i, 1)
         }
         (i @ 1.., j @ 1..) => (i, j),
@@ -86,7 +86,7 @@ async fn ring_loop(
                 .entry((id.to_string(), version.to_string()))
                 .or_insert(maxtokens);
             let now = Instant::now();
-            if (now - window_start).as_millis() > (period * 1000).into() {
+            if (now - window_start).as_millis() > (interval * 1000).into() {
                 window_start = now;
                 for v in producer_tokens.values_mut() {
                     *v = maxtokens;
@@ -152,7 +152,7 @@ fn main() -> anyhow::Result<()> {
         MapData::from_pin("/sys/fs/bpf/LDMS_SHARED_STREAM").unwrap(),
     ))
     .unwrap();
-    let readtask = smol::spawn(ring_loop(stream, ring_buf, cli.msglimit, cli.period));
+    let readtask = smol::spawn(ring_loop(stream, ring_buf, cli.msglimit, cli.interval));
 
     let (s, ctrl_c) = async_channel::bounded(100);
     let handle = move || {
