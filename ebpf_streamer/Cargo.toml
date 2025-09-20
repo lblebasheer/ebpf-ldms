@@ -56,7 +56,7 @@ license = "MIT OR Apache-2.0"
 summary = "Daemon that streams ebpf-generated data to LDMS"
 auto-req = "disabled"
 assets = [
-    { source = "target/debug/ebpf_streamer", dest = "/usr/bin/ebpf_streamer", mode = "755", config = "noreplace" },
+    { source = "target/release/ebpf_streamer", dest = "/usr/sbin/ebpf_streamer", mode = "755", config = "noreplace" },
     { source = "deploy/nersc-ebpf-streamer.service", dest = "/etc/systemd/system/nersc-ebpf-streamer.service", mode = "644" },
     { source = "deploy/ebpf_streamer", dest = "/etc/sysconfig/ebpf_streamer", mode = "644" },
 ]
