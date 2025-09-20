@@ -7,6 +7,7 @@ variables:
   RUSTUP_HOME: ${CI_PROJECT_DIR}/.rustup
   PATH: ${CARGO_HOME}/bin:${PATH}
   LDMS_PREFIX: /usr/local
+  ENTRYPOINT: ""
 
 cache:
   key: ${CI_JOB_NAME}
