@@ -50,7 +50,7 @@ async fn ring_loop(
     msglimit: u32,
     interval: u32,
 ) -> anyhow::Result<()> {
-    // track tokens for each producer sending messages to us
+    // track tokens for each producer sending messages to us.
     let mut producer_tokens: HashMap<(String, String), u32> = HashMap::new();
     let (maxtokens, interval) = match (msglimit, interval) {
         (0, 0) => {
