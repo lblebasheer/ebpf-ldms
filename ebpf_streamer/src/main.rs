@@ -134,11 +134,6 @@ fn main() -> anyhow::Result<()> {
         debug!("remove limit on locked memory failed, ret is: {ret}");
     }
 
-    //    if let Err(e) = aya_log::EbpfLogger::init(&mut ebpf) {
-    //        // This can happen if you remove all log statements from your eBPF program.
-    //        warn!("failed to initialize eBPF logger: {e}");
-    //    }
-
     let mut stream = SockStream::new(
         "sock",
         &cli.authentication,
