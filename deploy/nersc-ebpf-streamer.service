@@ -12,7 +12,8 @@ ExecStart = /usr/sbin/ebpf_streamer \
                 --stream ${EBPF_STREAMER_LDMSD_STREAM} \
                 --msglimit ${EBPF_STREAMER_MSGLIMIT} \
                 --interval ${EBPF_STREAMER_INTERVAL} \
-                --authentication ${EBPF_STREAMER_LDMSD_AUTH}
+                --authentication ${EBPF_STREAMER_LDMSD_AUTH} \
+                --hostname %H
 ExecStopPost = rm /sys/fs/bpf/LDMS_SHARED_STREAM
 
 [Install]
