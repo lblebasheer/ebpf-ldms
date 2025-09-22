@@ -42,6 +42,9 @@ struct EbpfStreamer {
     /// Authentication method when connecting to LDMS daemon
     #[arg(id="authentication",long,default_value_t = String::from("none"),value_name="none|munge")]
     authentication: String,
+    /// Set "hostname" field to this value in published messages
+    #[arg(id="hostname",long,default_value_t = String::from("localhost"),value_name="HOSTNAME")]
+    hostname: String,
 }
 
 async fn ring_loop(
@@ -49,6 +52,7 @@ async fn ring_loop(
     ring_buf: RingBuf<MapData>,
     msglimit: u32,
     interval: u32,
+    hostname: String,
 ) -> anyhow::Result<()> {
     // track tokens for each producer sending messages to us.
     let mut producer_tokens: HashMap<(String, String), u32> = HashMap::new();
@@ -67,6 +71,8 @@ async fn ring_loop(
         }
         (i @ 1.., j @ 1..) => (i, j),
     };
+
+    let hostname = serde_json::Value::String(hostname);
     let mut window_start = Instant::now();
     let mut ring_buf_f = Async::new(ring_buf)?;
     loop {
@@ -74,7 +80,8 @@ async fn ring_loop(
         while let Some(item) = ring_buf_f.get_mut().next() {
             debug!("{:?}", item);
             let v: ciborium::Value = from_reader(&item as &[u8]).unwrap();
-            let serde_v = serde_json::to_value(v)?;
+            let mut serde_v = serde_json::to_value(v)?;
+            serde_v.as_object_mut().unwrap().insert("hostname".to_string(), hostname.clone());
 
             // ratelimit.
             let (id, version) = (&serde_v["id"], &serde_v["version"]);
@@ -147,7 +154,7 @@ fn main() -> anyhow::Result<()> {
         MapData::from_pin("/sys/fs/bpf/LDMS_SHARED_STREAM").unwrap(),
     ))
     .unwrap();
-    let readtask = smol::spawn(ring_loop(stream, ring_buf, cli.msglimit, cli.interval));
+    let readtask = smol::spawn(ring_loop(stream, ring_buf, cli.msglimit, cli.interval, cli.hostname));
 
     let (s, ctrl_c) = async_channel::bounded(100);
     let handle = move || {
