@@ -6,8 +6,6 @@ edition = "2021"
 license.workspace = true
 
 [dependencies]
-ebpf_streamer-common = { path = "../ebpf_streamer-common", features = ["user"] }
-
 anyhow = { workspace = true, default-features = true }
 aya = { workspace = true }
 aya-log = { workspace = true }

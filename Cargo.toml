@@ -2,9 +2,8 @@
 resolver = "2"
 members = [
     "ebpf_streamer",
-    "ebpf_streamer-common",
 ]
-default-members = ["ebpf_streamer", "ebpf_streamer-common"]
+default-members = ["ebpf_streamer"]
 
 [workspace.package]
 license = "MIT OR Apache-2.0"
