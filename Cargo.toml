@@ -3,7 +3,6 @@ resolver = "2"
 members = [
     "ebpf_streamer",
     "ebpf_streamer-common",
-    "ebpf_streamer-ebpf",
 ]
 default-members = ["ebpf_streamer", "ebpf_streamer-common"]
 
