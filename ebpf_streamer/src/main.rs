@@ -1,51 +1,19 @@
 #[rustfmt::skip]
+
+mod cli;
+
 use log::{debug, warn};
 use std::{
     collections::{hash_map::Entry, HashMap},
     convert::TryFrom,
     time::Instant,
 };
-
 use async_channel;
 use aya::maps::{Map, MapData, RingBuf};
 use ciborium::de::from_reader;
-use clap::Parser;
 use ldms_stream::SockStream;
 use smol::{block_on, Async};
-
-#[derive(Parser)]
-#[command(name = "ebpf_streamer")]
-#[command(author = "Ershaad Basheer <ebasheer@lbl.gov>")]
-#[command(version = "0.3")]
-#[command(about = "Stream count of slow function calls to LDMS", long_about = None)]
-struct EbpfStreamer {
-    /// Name of LDMS stream to which messages are published
-    #[arg(id="stream",long,default_value_t = String::from("nersc"),value_name="STREAM")]
-    stream: String,
-    /// Average message rate limit for an individual producer in messages/interval (see --interval)
-    #[arg(
-        id = "msglimit",
-        long,
-        default_value_t = 2,
-        value_name = "MSGPERPERIOD"
-    )]
-    msglimit: u32,
-    /// Length of time interval over which message limits are calculated. In seconds
-    #[arg(id = "interval", long, default_value_t = 1, value_name = "INTERVAL")]
-    interval: u32,
-    /// Hostname or IP address of LDMS daemon
-    #[arg(id="host",long,default_value_t = String::from("localhost"),value_name="HOST")]
-    host: String,
-    /// TCP Port of LDMS daemon
-    #[arg(id="port",long,default_value_t = String::from("60003"),value_name="PORT")]
-    port: String,
-    /// Authentication method when connecting to LDMS daemon
-    #[arg(id="authentication",long,default_value_t = String::from("none"),value_name="none|munge")]
-    authentication: String,
-    /// Set "hostname" field to this value in published messages
-    #[arg(id="hostname",long,default_value_t = String::from("localhost"),value_name="HOSTNAME")]
-    hostname: String,
-}
+use clap::Parser;
 
 async fn ring_loop(
     stream: SockStream,
@@ -127,7 +95,7 @@ async fn ring_loop(
 }
 
 fn main() -> anyhow::Result<()> {
-    let cli = EbpfStreamer::parse();
+    let cli = cli::EbpfStreamer::parse();
     env_logger::init();
 
     // Bump the memlock rlimit. This is needed for older kernels that don't use the
