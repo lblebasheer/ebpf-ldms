@@ -1,19 +1,18 @@
-#[rustfmt::skip]
-
 mod cli;
 
-use log::{debug, warn};
 use std::{
     collections::{hash_map::Entry, HashMap},
     convert::TryFrom,
     time::Instant,
 };
+
 use async_channel;
 use aya::maps::{Map, MapData, RingBuf};
 use ciborium::de::from_reader;
-use ldms_stream::SockStream;
-use smol::{block_on, Async};
 use clap::Parser;
+use ldms_stream::SockStream;
+use log::{debug, warn};
+use smol::{block_on, Async};
 
 async fn ring_loop(
     stream: SockStream,
@@ -49,7 +48,10 @@ async fn ring_loop(
             debug!("{:?}", item);
             let v: ciborium::Value = from_reader(&item as &[u8]).unwrap();
             let mut serde_v = serde_json::to_value(v)?;
-            serde_v.as_object_mut().unwrap().insert("hostname".to_string(), hostname.clone());
+            serde_v
+                .as_object_mut()
+                .unwrap()
+                .insert("hostname".to_string(), hostname.clone());
 
             // ratelimit.
             let (id, version) = (&serde_v["id"], &serde_v["version"]);
@@ -122,7 +124,13 @@ fn main() -> anyhow::Result<()> {
         MapData::from_pin("/sys/fs/bpf/LDMS_SHARED_STREAM").unwrap(),
     ))
     .unwrap();
-    let readtask = smol::spawn(ring_loop(stream, ring_buf, cli.msglimit, cli.interval, cli.hostname));
+    let readtask = smol::spawn(ring_loop(
+        stream,
+        ring_buf,
+        cli.msglimit,
+        cli.interval,
+        cli.hostname,
+    ));
 
     let (s, ctrl_c) = async_channel::bounded(100);
     let handle = move || {
