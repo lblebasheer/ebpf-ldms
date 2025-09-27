@@ -1,5 +1,6 @@
-use clap::Parser;
 use std::env;
+
+use clap::Parser;
 
 #[derive(Parser)]
 #[command(name = env!("CARGO_PKG_NAME"))]

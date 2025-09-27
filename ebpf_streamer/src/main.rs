@@ -4,17 +4,17 @@ mod cli;
 use std::{
     collections::{hash_map::Entry, HashMap},
     convert::TryFrom,
+    time::Duration,
 };
 
 use async_channel;
 use aya::maps::{Map, MapData, RingBuf};
+use burster::{sliding_window_counter, Limiter, SlidingWindowCounter};
 use ciborium::de::from_reader;
 use clap::Parser;
 use ldms_stream::SockStream;
 use log::{debug, warn};
 use smol::{block_on, Async};
-use std::time::Duration;
-use burster::{Limiter, sliding_window_counter, SlidingWindowCounter};
 
 async fn ring_loop(
     stream: SockStream,
@@ -24,7 +24,10 @@ async fn ring_loop(
     hostname: String,
 ) -> anyhow::Result<()> {
     // track tokens for each producer sending messages to us.
-    let mut producer_tokens: HashMap<(String, String),SlidingWindowCounter<impl Fn() -> Duration>> = HashMap::new();
+    let mut producer_tokens: HashMap<
+        (String, String),
+        SlidingWindowCounter<impl Fn() -> Duration>,
+    > = HashMap::new();
     let (maxtokens, interval) = match (msglimit, interval) {
         (0, 0) => {
             warn!("Invalid msglimit and interval. Setting to 1 msg/second");
@@ -65,13 +68,16 @@ async fn ring_loop(
                 .or_insert(sliding_window_counter(maxtokens, interval * 1000));
 
             if let Entry::Occupied(mut entry) =
-                producer_tokens.entry((id.to_string(), version.to_string())) {
+                producer_tokens.entry((id.to_string(), version.to_string()))
+            {
                 if !entry.get_mut().try_consume_one().is_ok() {
-                    debug!("Token bucket for {} {} empty. Skipping message.", id, version);
+                    debug!(
+                        "Token bucket for {} {} empty. Skipping message.",
+                        id, version
+                    );
                     continue;
                 }
-            }
-            else {
+            } else {
                 panic!("id: {id}, version: {version} not found in HashMap")
             };
 
