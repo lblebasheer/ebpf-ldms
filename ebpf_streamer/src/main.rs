@@ -1,9 +1,9 @@
+#![feature(impl_trait_in_bindings)]
 mod cli;
 
 use std::{
     collections::{hash_map::Entry, HashMap},
     convert::TryFrom,
-    time::Instant,
 };
 
 use async_channel;
@@ -13,16 +13,18 @@ use clap::Parser;
 use ldms_stream::SockStream;
 use log::{debug, warn};
 use smol::{block_on, Async};
+use std::time::Duration;
+use burster::{Limiter, sliding_window_counter, SlidingWindowCounter};
 
 async fn ring_loop(
     stream: SockStream,
     ring_buf: RingBuf<MapData>,
-    msglimit: u32,
-    interval: u32,
+    msglimit: u64,
+    interval: u64,
     hostname: String,
 ) -> anyhow::Result<()> {
     // track tokens for each producer sending messages to us.
-    let mut producer_tokens: HashMap<(String, String), u32> = HashMap::new();
+    let mut producer_tokens: HashMap<(String, String),SlidingWindowCounter<impl Fn() -> Duration>> = HashMap::new();
     let (maxtokens, interval) = match (msglimit, interval) {
         (0, 0) => {
             warn!("Invalid msglimit and interval. Setting to 1 msg/second");
@@ -40,7 +42,6 @@ async fn ring_loop(
     };
 
     let hostname = serde_json::Value::String(hostname);
-    let mut window_start = Instant::now();
     let mut ring_buf_f = Async::new(ring_buf)?;
     loop {
         let _ = ring_buf_f.readable().await;
@@ -61,34 +62,18 @@ async fn ring_loop(
             }
             let _entry = producer_tokens
                 .entry((id.to_string(), version.to_string()))
-                .or_insert(maxtokens);
-            let now = Instant::now();
-            if (now - window_start).as_millis() > (interval * 1000).into() {
-                window_start = now;
-                for v in producer_tokens.values_mut() {
-                    *v = maxtokens;
-                }
-                producer_tokens
-                    .entry((id.to_string(), version.to_string()))
-                    .and_modify(|e| {
-                        *e = e.saturating_sub(1);
-                    });
-            } else {
-                let Entry::Occupied(mut entry) =
-                    producer_tokens.entry((id.to_string(), version.to_string()))
-                else {
-                    panic!("id: {id}, version: {version} not found in HashMap")
-                };
-                let tokens = entry.get_mut();
-                if *tokens > 0 {
-                    *tokens -= 1;
-                } else {
-                    debug!(
-                        "Token bucket empty for id: {id}, version: {version}. Skipping message."
-                    );
+                .or_insert(sliding_window_counter(maxtokens, interval * 1000));
+
+            if let Entry::Occupied(mut entry) =
+                producer_tokens.entry((id.to_string(), version.to_string())) {
+                if !entry.get_mut().try_consume_one().is_ok() {
+                    debug!("Token bucket for {} {} empty. Skipping message.", id, version);
                     continue;
                 }
             }
+            else {
+                panic!("id: {id}, version: {version} not found in HashMap")
+            };
 
             let msg = serde_json::to_string(&serde_v)?;
             stream.ldms_stream_publish(&msg)?;

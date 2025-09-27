@@ -1,6 +1,6 @@
 [package]
 name = "ebpf_streamer"
-version = "0.3.0"
+version = "0.4.1"
 edition = "2021"
 
 license.workspace = true
@@ -26,6 +26,7 @@ minicbor = { version = "1.0.0", features = ["derive"] }
 clap = { version = "4.5.40", features = ["derive"] }
 ciborium = "0.2.2"
 ldms_stream = { version = "0.1.0", path = "../ldms_stream" }
+burster = "0.1.1"
 [build-dependencies]
 anyhow = { workspace = true }
 aya-build = { workspace = true }
@@ -36,7 +37,7 @@ path = "src/main.rs"
 
 [package.metadata.generate-rpm]
 name = "ebpf_streamer"
-version = "0.3.0"
+version = "0.4.1"
 license = "MIT OR Apache-2.0"
 summary = "Daemon that streams ebpf-generated data to LDMS"
 auto-req = "disabled"

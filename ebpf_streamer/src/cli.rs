@@ -16,10 +16,10 @@ pub struct EbpfStreamer {
         default_value_t = 2,
         value_name = "MSGPERPERIOD"
     )]
-    pub msglimit: u32,
+    pub msglimit: u64,
     /// Length of time interval over which message limits are calculated. In seconds
     #[arg(id = "interval", long, default_value_t = 1, value_name = "INTERVAL")]
-    pub interval: u32,
+    pub interval: u64,
     /// Hostname or IP address of LDMS daemon
     #[arg(id="host",long,default_value_t = String::from("localhost"),value_name="HOST")]
     pub host: String,

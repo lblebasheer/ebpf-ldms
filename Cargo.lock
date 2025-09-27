@@ -354,6 +354,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "burster"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "38d123d7d3d6a20acddbea2ec32b3cc7b41e082a37a1cf55c01dcd37be684a0f"
+dependencies = [
+ "rustversion",
+]
+
+[[package]]
 name = "bytes"
 version = "1.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -543,7 +552,7 @@ checksum = "bd0c93bb4b0c6d9b77f4435b0ae98c24d17f1c45b2ff844c6151a07256ca923b"
 
 [[package]]
 name = "ebpf_streamer"
-version = "0.3.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "async-channel 2.5.0",
@@ -551,6 +560,7 @@ dependencies = [
  "aya",
  "aya-build",
  "aya-log",
+ "burster",
  "ciborium",
  "clap",
  "ctrlc",
