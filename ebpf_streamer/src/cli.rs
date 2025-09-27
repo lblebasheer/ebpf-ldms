@@ -1,10 +1,11 @@
 use clap::Parser;
+use std::env;
 
 #[derive(Parser)]
-#[command(name = "ebpf_streamer")]
-#[command(author = "Ershaad Basheer <ebasheer@lbl.gov>")]
-#[command(version = "0.3")]
-#[command(about = "Stream count of slow function calls to LDMS", long_about = None)]
+#[command(name = env!("CARGO_PKG_NAME"))]
+#[command(author = env!("CARGO_PKG_AUTHORS"))]
+#[command(version = env!("CARGO_PKG_VERSION"))]
+#[command(about = env!("CARGO_PKG_DESCRIPTION"), long_about = None)]
 pub struct EbpfStreamer {
     /// Name of LDMS stream to which messages are published
     #[arg(id="stream",long,default_value_t = String::from("nersc"),value_name="STREAM")]

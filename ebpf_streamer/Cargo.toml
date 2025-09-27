@@ -1,6 +1,8 @@
 [package]
 name = "ebpf_streamer"
-version = "0.4.1"
+version = "0.4.2"
+authors = ["Ershaad Basheer <ebasheer@lbl.gov>"]
+description = "Daemon that relays eBPF generated messages to LDMS"
 edition = "2021"
 
 license.workspace = true
@@ -37,7 +39,7 @@ path = "src/main.rs"
 
 [package.metadata.generate-rpm]
 name = "ebpf_streamer"
-version = "0.4.1"
+version = "0.4.2"
 license = "MIT OR Apache-2.0"
 summary = "Daemon that streams ebpf-generated data to LDMS"
 auto-req = "disabled"
