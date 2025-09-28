@@ -16,6 +16,12 @@ use ldms_stream::SockStream;
 use log::{debug, warn};
 use smol::{block_on, Async};
 
+fn map_insert_key<T: Into<serde_json::Value>>(obj: &mut serde_json::Value, key: &str, value: T) {
+    obj.as_object_mut()
+        .unwrap()
+        .insert(key.to_string(), value.into());
+}
+
 async fn ring_loop(
     stream: SockStream,
     ring_buf: RingBuf<MapData>,
@@ -44,7 +50,6 @@ async fn ring_loop(
         (i @ 1.., j @ 1..) => (i, j),
     };
 
-    let hostname = serde_json::Value::String(hostname);
     let mut ring_buf_f = Async::new(ring_buf)?;
     loop {
         let _ = ring_buf_f.readable().await;
@@ -52,13 +57,25 @@ async fn ring_loop(
             debug!("{:?}", item);
             let v: ciborium::Value = from_reader(&item as &[u8]).unwrap();
             let mut serde_v = serde_json::to_value(v)?;
-            serde_v
-                .as_object_mut()
-                .unwrap()
-                .insert("hostname".to_string(), hostname.clone());
+            let (id, version) = (
+                serde_v["id"].as_str().unwrap_or("invalid_id").to_string(),
+                serde_v["version"]
+                    .as_str()
+                    .unwrap_or("invalid_version")
+                    .to_string(),
+            );
+            map_insert_key(
+                &mut serde_v,
+                "hostname",
+                serde_json::Value::String(hostname.clone()),
+            );
+            map_insert_key(
+                &mut serde_v,
+                "instance",
+                serde_json::Value::String(format!("{}/{}{}", hostname, id, version)),
+            );
 
             // ratelimit.
-            let (id, version) = (&serde_v["id"], &serde_v["version"]);
             if *id == serde_json::Value::Null || *version == serde_json::Value::Null {
                 warn!("\"id\" or \"version\" fields not found in message. Skipping message.");
                 continue;
