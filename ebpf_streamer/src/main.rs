@@ -12,6 +12,7 @@ use aya::maps::{Map, MapData, RingBuf};
 use burster::{sliding_window_counter, Limiter, SlidingWindowCounter};
 use ciborium::de::from_reader;
 use clap::Parser;
+use cli::ValidateClap;
 use ldms_stream::SockStream;
 use log::{debug, warn};
 use smol::{block_on, Async};
@@ -34,21 +35,6 @@ async fn ring_loop(
         (String, String),
         SlidingWindowCounter<impl Fn() -> Duration>,
     > = HashMap::new();
-    let (maxtokens, interval) = match (msglimit, interval) {
-        (0, 0) => {
-            warn!("Invalid msglimit and interval. Setting to 1 msg/second");
-            (1, 1)
-        }
-        (0, j @ 1..) => {
-            warn!("Invalid msglimit. Setting to 1 msg/{interval} second(s)");
-            (1, j)
-        }
-        (i @ 1.., 0) => {
-            warn!("Invalid interval. Setting to 1 second");
-            (i, 1)
-        }
-        (i @ 1.., j @ 1..) => (i, j),
-    };
 
     let mut ring_buf_f = Async::new(ring_buf)?;
     loop {
@@ -64,32 +50,37 @@ async fn ring_loop(
                     .unwrap_or("invalid_version")
                     .to_string(),
             );
+
+            // Insert/override "hostname" field. Required for omni
             map_insert_key(
                 &mut serde_v,
                 "hostname",
                 serde_json::Value::String(hostname.clone()),
             );
+
+            // Inset/override "instance" field. Required for omni.
             map_insert_key(
                 &mut serde_v,
                 "instance",
                 serde_json::Value::String(format!("{}/{}{}", hostname, id, version)),
             );
 
-            // ratelimit.
             if *id == serde_json::Value::Null || *version == serde_json::Value::Null {
                 warn!("\"id\" or \"version\" fields not found in message. Skipping message.");
                 continue;
             }
+
+            // Track sliding window limits for each (id, version) pair.
             let _entry = producer_tokens
                 .entry((id.to_string(), version.to_string()))
-                .or_insert(sliding_window_counter(maxtokens, interval * 1000));
+                .or_insert(sliding_window_counter(msglimit, interval * 1000));
 
             if let Entry::Occupied(mut entry) =
                 producer_tokens.entry((id.to_string(), version.to_string()))
             {
                 if !entry.get_mut().try_consume_one().is_ok() {
                     debug!(
-                        "Token bucket for {} {} empty. Skipping message.",
+                        "Rate limit exceeded for {} {} empty. Skipping message.",
                         id, version
                     );
                     continue;
@@ -105,8 +96,9 @@ async fn ring_loop(
 }
 
 fn main() -> anyhow::Result<()> {
-    let cli = cli::EbpfStreamer::parse();
     env_logger::init();
+    let mut cli = cli::EbpfStreamer::parse();
+    cli.parse_ratelimit();
 
     // Bump the memlock rlimit. This is needed for older kernels that don't use the
     // new memcg based accounting, see https://lwn.net/Articles/837122/

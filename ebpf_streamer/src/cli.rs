@@ -1,6 +1,7 @@
 use std::env;
 
 use clap::Parser;
+use log::warn;
 
 #[derive(Parser)]
 #[command(name = env!("CARGO_PKG_NAME"))]
@@ -34,4 +35,28 @@ pub struct EbpfStreamer {
     /// Set "hostname" field to this value in published messages
     #[arg(id="hostname",long,default_value_t = String::from("localhost"),value_name="HOSTNAME")]
     pub hostname: String,
+}
+
+pub trait ValidateClap {
+    fn parse_ratelimit(&mut self);
+}
+
+impl ValidateClap for EbpfStreamer {
+    fn parse_ratelimit(&mut self) {
+        (self.msglimit, self.interval) = match (self.msglimit, self.interval) {
+            (0, 0) => {
+                warn!("Invalid msglimit and interval. Setting to 1 msg/second");
+                (1, 1)
+            }
+            (0, j @ 1..) => {
+                warn!("Invalid msglimit. Setting to 1 msg/{j} second(s)");
+                (1, j)
+            }
+            (i @ 1.., 0) => {
+                warn!("Invalid interval. Setting to 1 second");
+                (i, 1)
+            }
+            (i @ 1.., j @ 1..) => (i, j),
+        };
+    }
 }
