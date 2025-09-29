@@ -4,7 +4,7 @@ mod cli;
 use std::{
     collections::{hash_map::Entry, HashMap},
     convert::TryFrom,
-    time::Duration,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use async_channel;
@@ -14,13 +14,21 @@ use ciborium::de::from_reader;
 use clap::Parser;
 use cli::ValidateClap;
 use ldms_stream::SockStream;
-use log::{debug, warn};
+use log::{debug, error, warn};
 use smol::{block_on, Async};
 
 fn map_insert_key<T: Into<serde_json::Value>>(obj: &mut serde_json::Value, key: &str, value: T) {
     obj.as_object_mut()
         .unwrap()
         .insert(key.to_string(), value.into());
+}
+
+fn current_mono_realtime_offset() -> SystemTime {
+    // as_nanos() returns u128
+    let now_mono =
+        Duration::from(nix::time::clock_gettime(nix::time::ClockId::CLOCK_MONOTONIC).unwrap());
+    let now_real = SystemTime::now();
+    return now_real - now_mono;
 }
 
 async fn ring_loop(
@@ -36,6 +44,7 @@ async fn ring_loop(
         SlidingWindowCounter<impl Fn() -> Duration>,
     > = HashMap::new();
 
+    let time_offset = current_mono_realtime_offset();
     let mut ring_buf_f = Async::new(ring_buf)?;
     loop {
         let _ = ring_buf_f.readable().await;
@@ -43,13 +52,26 @@ async fn ring_loop(
             debug!("{:?}", item);
             let v: ciborium::Value = from_reader(&item as &[u8]).unwrap();
             let mut serde_v = serde_json::to_value(v)?;
-            let (id, version) = (
-                serde_v["id"].as_str().unwrap_or("invalid_id").to_string(),
-                serde_v["version"]
-                    .as_str()
-                    .unwrap_or("invalid_version")
-                    .to_string(),
+            let (id, version, timestamp_monotonic) = (
+                &serde_v["id"],
+                &serde_v["version"],
+                &serde_v["timestamp_monotonic"],
             );
+
+            if *id == serde_json::Value::Null
+                || *version == serde_json::Value::Null
+                || *timestamp_monotonic == serde_json::Value::Null
+            {
+                warn!("\"id\", \"version\", \"timestamp_monotonic\" fields not found in message. Skipping message.");
+                continue;
+            }
+
+            let id = id.as_str().unwrap_or("invalid id field").to_string();
+            let version = version
+                .as_str()
+                .unwrap_or("invalid version field")
+                .to_string();
+            let timestamp_monotonic = timestamp_monotonic.as_u64().unwrap_or(0u64);
 
             // Insert/override "hostname" field. Required for omni
             map_insert_key(
@@ -58,17 +80,31 @@ async fn ring_loop(
                 serde_json::Value::String(hostname.clone()),
             );
 
-            // Inset/override "instance" field. Required for omni.
+            // Insert/override "instance" field. Required for omni.
             map_insert_key(
                 &mut serde_v,
                 "instance",
                 serde_json::Value::String(format!("{}/{}{}", hostname, id, version)),
             );
 
-            if *id == serde_json::Value::Null || *version == serde_json::Value::Null {
-                warn!("\"id\" or \"version\" fields not found in message. Skipping message.");
-                continue;
-            }
+            // Generate timestamp field from received monotonic clock timestamp. Required for omni.
+            map_insert_key(
+                &mut serde_v,
+                "timestamp",
+                match (time_offset + Duration::from_nanos(timestamp_monotonic))
+                    .duration_since(UNIX_EPOCH)
+                {
+                    Ok(unixtime) => {
+                        let mut ts: f64 = unixtime.as_secs() as f64;
+                        ts += (unixtime.subsec_micros() as f64) / 1_000_000_000_f64;
+                        ts
+                    }
+                    Err(_) => {
+                        error!("Generating timestamp failed. Skipping message.");
+                        continue;
+                    }
+                },
+            );
 
             // Track sliding window limits for each (id, version) pair.
             let _entry = producer_tokens
