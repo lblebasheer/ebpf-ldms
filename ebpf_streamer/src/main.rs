@@ -7,7 +7,6 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use async_channel;
 use aya::maps::{Map, MapData, RingBuf};
 use burster::{sliding_window_counter, Limiter, SlidingWindowCounter};
 use ciborium::de::from_reader;
@@ -28,7 +27,7 @@ fn current_mono_realtime_offset() -> SystemTime {
     let now_mono =
         Duration::from(nix::time::clock_gettime(nix::time::ClockId::CLOCK_MONOTONIC).unwrap());
     let now_real = SystemTime::now();
-    return now_real - now_mono;
+    now_real - now_mono
 }
 
 async fn ring_loop(
@@ -114,7 +113,7 @@ async fn ring_loop(
             if let Entry::Occupied(mut entry) =
                 producer_tokens.entry((id.to_string(), version.to_string()))
             {
-                if !entry.get_mut().try_consume_one().is_ok() {
+                if entry.get_mut().try_consume_one().is_err() {
                     debug!(
                         "Rate limit exceeded for {} {} empty. Skipping message.",
                         id, version
