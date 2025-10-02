@@ -35,6 +35,9 @@ pub struct EbpfStreamer {
     /// Set "hostname" field to this value in published messages
     #[arg(id="hostname",long,default_value_t = String::from("localhost"),value_name="HOSTNAME")]
     pub hostname: String,
+    /// File to which logs are written in addition to the console
+    #[arg(id="logfile",long,default_value_t = String::from("/var/log/ebpf_streamer.log"),value_name="LOGFILE")]
+    pub logfile: String,
 }
 
 pub trait ValidateClap {

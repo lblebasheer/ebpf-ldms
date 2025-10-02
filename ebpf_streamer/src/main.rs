@@ -4,6 +4,7 @@ mod cli;
 use std::{
     collections::{hash_map::Entry, HashMap},
     convert::TryFrom,
+    path::Path,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -12,8 +13,9 @@ use burster::{sliding_window_counter, Limiter, SlidingWindowCounter};
 use ciborium::de::from_reader;
 use clap::Parser;
 use cli::ValidateClap;
+use ftail::Ftail;
 use ldms_stream::SockStream;
-use log::{debug, error, warn};
+use log::{debug, error, trace, warn, LevelFilter};
 use smol::{block_on, Async};
 
 fn map_insert_key<T: Into<serde_json::Value>>(obj: &mut serde_json::Value, key: &str, value: T) {
@@ -26,8 +28,14 @@ fn current_mono_realtime_offset() -> SystemTime {
     // as_nanos() returns u128
     let now_mono =
         Duration::from(nix::time::clock_gettime(nix::time::ClockId::CLOCK_MONOTONIC).unwrap());
+    // wallclock time
     let now_real = SystemTime::now();
-    now_real - now_mono
+    let now_minus = now_real - now_mono;
+    let offset = now_real.duration_since(now_minus).unwrap();
+    let secs = offset.as_secs();
+    let micros = offset.subsec_micros();
+    debug!("Calculated offset between wallclock and CLOCK_MONOTONIC: {secs}.{micros}");
+    now_minus
 }
 
 async fn ring_loop(
@@ -48,7 +56,6 @@ async fn ring_loop(
     loop {
         let _ = ring_buf_f.readable().await;
         while let Some(item) = ring_buf_f.get_mut().next() {
-            debug!("{:?}", item);
             let v: ciborium::Value = from_reader(&item as &[u8]).unwrap();
             let mut serde_v = serde_json::to_value(v)?;
             let (id, version, timestamp_monotonic) = (
@@ -114,9 +121,10 @@ async fn ring_loop(
                 producer_tokens.entry((id.to_string(), version.to_string()))
             {
                 if entry.get_mut().try_consume_one().is_err() {
-                    debug!(
+                    trace!(
                         "Rate limit exceeded for {} {} empty. Skipping message.",
-                        id, version
+                        id,
+                        version
                     );
                     continue;
                 }
@@ -125,14 +133,19 @@ async fn ring_loop(
             };
 
             let msg = serde_json::to_string(&serde_v)?;
+            debug!("Received message in JSON: {msg}");
             stream.ldms_stream_publish(&msg)?;
         }
     }
 }
 
 fn main() -> anyhow::Result<()> {
-    env_logger::init();
     let mut cli = cli::EbpfStreamer::parse();
+    Ftail::new()
+        .console_env_level() // log to console
+        .single_file(&Path::new(&cli.logfile), true, LevelFilter::Debug)
+        .max_file_size(100)
+        .init()?; // initialize logger
     cli.parse_ratelimit();
 
     // Bump the memlock rlimit. This is needed for older kernels that don't use the
