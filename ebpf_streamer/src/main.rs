@@ -51,6 +51,7 @@ async fn ring_loop(
         SlidingWindowCounter<impl Fn() -> Duration>,
     > = HashMap::new();
 
+    let hostname_json = serde_json::Value::String(hostname.clone());
     let time_offset = current_mono_realtime_offset();
     let mut ring_buf_f = Async::new(ring_buf)?;
     loop {
@@ -83,8 +84,7 @@ async fn ring_loop(
             map_insert_key(
                 &mut serde_v,
                 "hostname",
-                serde_json::Value::String(hostname.clone()),
-            );
+                hostname_json.as_str());
 
             // Insert/override "instance" field. Required for omni.
             map_insert_key(
@@ -117,19 +117,20 @@ async fn ring_loop(
                 .entry((id.to_string(), version.to_string()))
                 .or_insert(sliding_window_counter(msglimit, interval * 1000));
 
-            if let Entry::Occupied(mut entry) =
-                producer_tokens.entry((id.to_string(), version.to_string()))
-            {
-                if entry.get_mut().try_consume_one().is_err() {
-                    trace!(
-                        "Rate limit exceeded for {} {} empty. Skipping message.",
-                        id,
-                        version
-                    );
-                    continue;
+            match producer_tokens.entry((id.to_string(), version.to_string())) {
+                Entry::Vacant(e) => {
+                    e.insert(sliding_window_counter(msglimit, interval * 1000));
                 }
-            } else {
-                panic!("id: {id}, version: {version} not found in HashMap")
+                Entry::Occupied(mut e) => {
+                    if e.get_mut().try_consume_one().is_err() {
+                        trace!(
+                            "Rate limit exceeded for {} {} empty. Skipping message.",
+                            id,
+                            version
+                        );
+                        continue;
+                    }
+                }
             };
 
             let msg = serde_json::to_string(&serde_v)?;
@@ -190,8 +191,8 @@ fn main() -> anyhow::Result<()> {
 
         // Receive a message that indicates the Ctrl-C signal occurred.
         ctrl_c.recv().await.ok();
-        readtask.cancel().await;
     });
+    drop(readtask);
     println!("Exiting...");
 
     Ok(())
