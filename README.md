@@ -15,7 +15,8 @@ implementations that are suitable for inlining into eBPF and are able to run
 in the stack-limited eBPF environment with no access to heap allocated
 memory.  The ebpf_streamer daemon reads messages off of the ring buffer map,
 expands them into JSON, appends some metadata and submits them to the chosen
-stream of an LDMS daemon at a configurable location.
+stream of an LDMS daemon at a configurable location, the default being the
+`ldmsd` running on `localhost`.
 
 ## eBPF producer example
 
