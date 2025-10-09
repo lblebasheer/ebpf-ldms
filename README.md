@@ -3,17 +3,19 @@
 ## Overview
 
 ebpf_streamer is a userspace daemon that provides a connector between eBPF
-based sources of event data, and [LDMS](https://github.com/ovis-hpc/ldms). It
-aims to lower the barrier to writing eBPF programs for monitoring and data
-collection by factoring out all the infrastructure needed for relaying the
-collected data to LDMS. ebpf_streamer achieves this by creating a pinned
+based sources of event data, and [LDMS](https://github.com/ovis-hpc/ldms).
+It aims to lower the barrier to writing eBPF programs for monitoring and
+data collection by factoring out all the infrastructure needed for relaying
+the collected data to LDMS. ebpf_streamer achieves this by creating a pinned
 eBPF ring buffer map in a well known location
 `/sys/fs/bpf/LDMS_SHARED_STREAM`. All the eBPF programs running on the node
 need only submit messages to this shared map in the efficient binary
-[CBOR](https://cbor.io/) format. The ebpf_streamer daemon reads messages off
-of the ring buffer map, expands them into JSON, appends some metadata and
-submits them to the chosen stream of an LDMS daemon at a configurable
-location.
+[CBOR](https://cbor.io/) format. CBOR was chosen since it has very small
+implementations that are suitable for inlining into eBPF and are able to run
+in the stack-limited eBPF environment with no access to heap allocated
+memory.  The ebpf_streamer daemon reads messages off of the ring buffer map,
+expands them into JSON, appends some metadata and submits them to the chosen
+stream of an LDMS daemon at a configurable location.
 
 ## eBPF producer example
 
