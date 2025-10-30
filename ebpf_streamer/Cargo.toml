@@ -27,8 +27,8 @@ minicbor = { version = "1.0.0", features = ["derive"] }
 clap = { version = "4.5.40", features = ["derive"] }
 ciborium = "0.2.2"
 ldms_stream = { version = "0.1.0", path = "../ldms_stream" }
-burster = { version = "0.1.1", path = "../burster" }
 ftail = "0.3.1"
+burster = "0.1.2"
 [build-dependencies]
 anyhow = { workspace = true }
 aya-build = { workspace = true }
