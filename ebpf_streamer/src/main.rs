@@ -67,7 +67,10 @@ async fn ring_loop(
             let mut serde_v = match serde_json::to_value(&v) {
                 Ok(serde_v) => serde_v,
                 Err(err) => {
-                    error!("Failed to deserialize CBOR to JSON. Skipping: Description {}", err);
+                    error!(
+                        "Failed to deserialize CBOR to JSON. Skipping: Description {}",
+                        err
+                    );
                     continue;
                 }
             };
@@ -93,10 +96,7 @@ async fn ring_loop(
             let timestamp_monotonic = timestamp_monotonic.as_u64().unwrap_or(0u64);
 
             // Insert/override "hostname" field. Required for omni
-            map_insert_key(
-                &mut serde_v,
-                "hostname",
-                hostname_json.as_str());
+            map_insert_key(&mut serde_v, "hostname", hostname_json.as_str());
 
             // Insert/override "instance" field. Required for omni.
             map_insert_key(

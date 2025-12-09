@@ -32,9 +32,8 @@ impl SockStream {
         let c_stream = CString::new(stream)?;
 
         let null_value: *const raw::attr_value_list = ptr::null();
-        let xprt_handle = unsafe {
-            raw::ldms_xprt_new_with_auth(c_xprt.as_ptr(), c_auth.as_ptr(), null_value)
-        };
+        let xprt_handle =
+            unsafe { raw::ldms_xprt_new_with_auth(c_xprt.as_ptr(), c_auth.as_ptr(), null_value) };
         if xprt_handle.is_null() {
             return Err(anyhow!(
                 "ldms_xprt_new_with_auth: Failed to create new transport"
@@ -112,7 +111,6 @@ impl SockStream {
         }
         Ok(())
     }
-
 }
 
 impl Drop for SockStream {

@@ -38,9 +38,7 @@ unsafe extern "C" {
         cb_arg: *const cb_arg,
     ) -> c_int;
 
-    pub fn ldms_xprt_close(
-        x: *const ldms_t,
-    ) -> ();
+    pub fn ldms_xprt_close(x: *const ldms_t) -> ();
 
     pub fn ldmsd_stream_publish(
         x: *const ldms_t,
