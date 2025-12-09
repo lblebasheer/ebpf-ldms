@@ -31,10 +31,9 @@ impl SockStream {
         let c_port = CString::new(port)?;
         let c_stream = CString::new(stream)?;
 
-        let null_log: *const raw::ldms_log_fn_t = ptr::null();
         let null_value: *const raw::attr_value_list = ptr::null();
         let xprt_handle = unsafe {
-            raw::ldms_xprt_new_with_auth(c_xprt.as_ptr(), null_log, c_auth.as_ptr(), null_value)
+            raw::ldms_xprt_new_with_auth(c_xprt.as_ptr(), c_auth.as_ptr(), null_value)
         };
         if xprt_handle.is_null() {
             return Err(anyhow!(
@@ -71,6 +70,10 @@ impl SockStream {
         Ok(())
     }
 
+    pub fn close(&mut self) -> () {
+        unsafe { raw::ldms_xprt_close(self.xprt_handle) }
+    }
+
     pub fn ldms_stream_publish(&self, message: &str) -> Result<()> {
         let c_message = CString::new(message)?;
 
@@ -87,5 +90,33 @@ impl SockStream {
             return Err(anyhow!("ldmsd_steam_publish: failed: {}", rc));
         }
         Ok(())
+    }
+
+    pub fn ldms_msg_publish(&self, message: &str) -> Result<()> {
+        let c_message = CString::new(message)?;
+        let null_cred: *const raw::ldms_cred_t = ptr::null();
+
+        let rc = unsafe {
+            raw::ldms_msg_publish(
+                self.xprt_handle,
+                self.c_stream.as_ptr(),
+                raw::ldmsd_stream_type_t::LDMSD_STREAM_JSON,
+                null_cred,
+                0400,
+                c_message.as_ptr(),
+                (c_message.count_bytes() + 1) as u64,
+            )
+        };
+        if rc != 0 {
+            return Err(anyhow!("ldms_msg_publish: failed: {}", rc));
+        }
+        Ok(())
+    }
+
+}
+
+impl Drop for SockStream {
+    fn drop(&mut self) {
+        self.close();
     }
 }

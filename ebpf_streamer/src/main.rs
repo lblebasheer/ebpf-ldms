@@ -57,8 +57,20 @@ async fn ring_loop(
     loop {
         let _ = ring_buf_f.readable().await;
         while let Some(item) = ring_buf_f.get_mut().next() {
-            let v: ciborium::Value = from_reader(&item as &[u8]).unwrap();
-            let mut serde_v = serde_json::to_value(v)?;
+            let v: ciborium::Value = match from_reader(&item as &[u8]) {
+                Ok(v) => v,
+                Err(err) => {
+                    error!("Failed to deserialize CBOR. Skipping. Description: {}", err);
+                    continue;
+                }
+            };
+            let mut serde_v = match serde_json::to_value(&v) {
+                Ok(serde_v) => serde_v,
+                Err(err) => {
+                    error!("Failed to deserialize CBOR to JSON. Skipping: Description {}", err);
+                    continue;
+                }
+            };
             let (id, version, timestamp_monotonic) = (
                 &serde_v["id"],
                 &serde_v["version"],
@@ -135,7 +147,7 @@ async fn ring_loop(
 
             let msg = serde_json::to_string(&serde_v)?;
             debug!("Received message in JSON: {msg}");
-            stream.ldms_stream_publish(&msg)?;
+            stream.ldms_msg_publish(&msg)?;
         }
     }
 }
