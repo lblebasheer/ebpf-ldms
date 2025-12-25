@@ -1,0 +1,30 @@
+[package]
+name          = "minicbor-io"
+version       = "0.23.0"
+authors       = ["Toralf Wittner <tw@dtex.org>"]
+license       = "BlueOak-1.0.0"
+edition       = "2024"
+description   = "A set of I/O utilities for minicbor."
+repository    = "https://github.com/twittner/minicbor"
+keywords      = ["cbor", "minicbor", "serialization", "encoding", "no_std"]
+categories    = ["encoding"]
+
+[package.metadata.docs.rs]
+all-features = true
+
+[features]
+async-io = ["futures-core", "futures-io", "futures-util"]
+
+[dependencies]
+futures-core = { version = "0.3.8", optional = true }
+futures-io   = { version = "0.3.8", optional = true }
+futures-util = { version = "0.3.8", features = ["io"], optional = true }
+minicbor     = { path = "../minicbor", version = "2.0.0", features = ["std"] }
+
+[dev-dependencies]
+minicbor    = { path = "../minicbor", version = "2.0.0", features = ["std", "derive"] }
+minicbor-io = { path = ".", features = ["async-io"] }
+quickcheck  = "1.0.1"
+rand        = "0.9.0"
+tokio       = { version = "1.0", features = ["macros", "net", "rt"] }
+tokio-util  = { version = "0.7", features = ["compat"] }
