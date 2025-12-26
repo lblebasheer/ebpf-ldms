@@ -1,7 +1,5 @@
 #![no_std]
-use aya_ebpf::{
-    bindings::bpf_spin_lock,
-};
+use aya_ebpf::bindings::bpf_spin_lock;
 
 #[repr(C)]
 pub struct FsWriteStats {

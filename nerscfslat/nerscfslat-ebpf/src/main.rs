@@ -83,9 +83,11 @@ fn try_fslat_exit(ctx: FExitContext) -> Result<u32, u32> {
                 };
                 let _ = PTRLIST.remove(&(filp as usize));
             }
-        unsafe { *countptr += 1; }
+            unsafe {
+                *countptr += 1;
+            }
         }
-        None => {},
+        None => {}
     };
     Ok(0)
 }
@@ -94,53 +96,58 @@ fn ringbuf_put(eventf: &EventFields, op_name: &str, latency: u64, unit: &str) ->
     let Some(mut dataent) = LDMS_SHARED_STREAM.reserve::<[u8; BUFSIZE]>(0) else {
         return Err(1);
     };
-    let EventFields{id, version, monotonic, seq} = *eventf;
+    let EventFields {
+        id,
+        version,
+        monotonic,
+        seq,
+    } = *eventf;
     let dataent_bytes: *mut [u8] = dataent.as_mut_ptr();
     let mut encoder = unsafe { Encoder::new(&mut *dataent_bytes) };
     unsafe {
         encoder
-              .begin_map()
-              .unwrap_unchecked()
-              .str("id")
-              .unwrap_unchecked()
-              .str(id)
-              .unwrap_unchecked()
-              .str("version")
-              .unwrap_unchecked()
-              .str(version)
-              .unwrap_unchecked()
-              .str("timestamp_monotonic")
-              .unwrap_unchecked()
-              .u64(monotonic)
-              .unwrap_unchecked()
-              .str("metrics")
-              .unwrap_unchecked()
-                  .begin_array()
-                  .unwrap_unchecked()
-                      .begin_map()
-                      .unwrap_unchecked()
-                          .str("sequence")
-                          .unwrap_unchecked()
-                          .u64(seq)
-                          .unwrap_unchecked()
-                          .str("latency")
-                          .unwrap_unchecked()
-                          .u64(latency)
-                          .unwrap_unchecked()
-                          .str("unit")
-                          .unwrap_unchecked()
-                          .str(unit)
-                          .unwrap_unchecked()
-                          .str("operation")
-                          .unwrap_unchecked()
-                          .str(op_name)
-                          .unwrap_unchecked()
-                      .end()
-                      .unwrap_unchecked()
-                  .end()
-                  .unwrap_unchecked()
-              .end()
-              .unwrap_unchecked();
+            .begin_map()
+            .unwrap_unchecked()
+            .str("id")
+            .unwrap_unchecked()
+            .str(id)
+            .unwrap_unchecked()
+            .str("version")
+            .unwrap_unchecked()
+            .str(version)
+            .unwrap_unchecked()
+            .str("timestamp_monotonic")
+            .unwrap_unchecked()
+            .u64(monotonic)
+            .unwrap_unchecked()
+            .str("metrics")
+            .unwrap_unchecked()
+            .begin_array()
+            .unwrap_unchecked()
+            .begin_map()
+            .unwrap_unchecked()
+            .str("sequence")
+            .unwrap_unchecked()
+            .u64(seq)
+            .unwrap_unchecked()
+            .str("latency")
+            .unwrap_unchecked()
+            .u64(latency)
+            .unwrap_unchecked()
+            .str("unit")
+            .unwrap_unchecked()
+            .str(unit)
+            .unwrap_unchecked()
+            .str("operation")
+            .unwrap_unchecked()
+            .str(op_name)
+            .unwrap_unchecked()
+            .end()
+            .unwrap_unchecked()
+            .end()
+            .unwrap_unchecked()
+            .end()
+            .unwrap_unchecked();
     }
     dataent.submit(0);
     Ok(0)
