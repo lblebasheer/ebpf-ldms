@@ -2,14 +2,16 @@
 #![no_main]
 
 use aya_ebpf::{
-    cty::c_char,
-    helpers::bpf_ktime_get_ns,
+    bindings::path,
+    cty::c_uchar,
+    helpers::{bpf_d_path, bpf_ktime_get_ns},
     macros::{fentry, fexit, map},
-    maps::{Array, HashMap, RingBuf},
+    maps::{Array, HashMap, PerCpuArray, RingBuf},
     programs::{FEntryContext, FExitContext},
 };
+use aya_log_ebpf::debug;
 use minicbor::Encoder;
-use nerscfslat_common::FsWriteStats;
+use nerscfslat_common::{FsWriteStats, NUM_PATH_PREFIX, PATHFRAGLEN};
 
 #[allow(nonstandard_style)]
 #[allow(unnecessary_transmutes)]
@@ -23,10 +25,13 @@ const BUFSIZE: usize = 1024;
 static COUNTER: Array<u64> = Array::with_max_entries(1, 0);
 
 #[map]
-static PTRLIST: HashMap<usize, u64> = HashMap::with_max_entries(1024, 0);
+static WRITESTATS: Array<FsWriteStats> = Array::with_max_entries(NUM_PATH_PREFIX, 0);
 
 #[map]
-static WRITESTATS: HashMap<[c_char; 32], FsWriteStats> = HashMap::with_max_entries(16, 0);
+static PATHBUF: PerCpuArray<[c_uchar; PATHFRAGLEN]> = PerCpuArray::with_max_entries(1, 0);
+
+#[map]
+static PTRLIST: HashMap<usize, u64> = HashMap::with_max_entries(1024, 0);
 
 #[map]
 static LDMS_SHARED_STREAM: RingBuf = RingBuf::pinned(8192, 0);
@@ -36,6 +41,26 @@ struct EventFields<'a> {
     version: &'a str,
     monotonic: u64,
     seq: u64,
+}
+
+fn hashmap_pathentry(
+    ctx: FEntryContext,
+    path: &[c_uchar; PATHFRAGLEN],
+    pathlen: usize,
+) -> Option<&FsWriteStats> {
+    for idx in 0..NUM_PATH_PREFIX {
+        let Some(entry) = WRITESTATS.get(idx) else {
+            return None;
+        };
+        let pathstr = unsafe { core::str::from_utf8_unchecked(path) };
+        let pathfragstr = unsafe { core::str::from_utf8_unchecked(&entry.pathfrag) };
+        let path = unsafe { pathstr.get_unchecked(..pathlen.clamp(0, PATHFRAGLEN)) };
+        let pathfrag = unsafe { pathfragstr.get_unchecked(..entry.fraglen.clamp(0, PATHFRAGLEN)) };
+        if path.starts_with(pathfrag) && !pathfrag.is_empty() {
+            return Some(entry);
+        }
+    }
+    None
 }
 
 #[fentry(function = "filp_close")]
@@ -56,7 +81,29 @@ pub fn filp_close_exit(ctx: FExitContext) -> u32 {
 
 fn try_fslat_entry(ctx: FEntryContext) -> Result<u32, u32> {
     let now = unsafe { bpf_ktime_get_ns() };
-    let filp: *const vmlinux::file = ctx.arg(0);
+    let filp: *mut vmlinux::file = ctx.arg(0);
+    let pathptr = unsafe { &raw mut (*filp).f_path };
+    let Some(pathbuf_ptr) = PATHBUF.get_ptr_mut(0) else {
+        return Err(1);
+    };
+    let ret = unsafe {
+        bpf_d_path(
+            pathptr as *mut path,
+            pathbuf_ptr as *mut i8,
+            PATHFRAGLEN as u32,
+        )
+    };
+    if ret < 0 {
+        return Err(1);
+    }
+    // exclude trailing null
+    let Some(_) = hashmap_pathentry(
+        ctx,
+        unsafe { pathbuf_ptr.as_ref().unwrap() },
+        (ret - 1) as usize,
+    ) else {
+        return Ok(0);
+    };
     let _ = PTRLIST.insert(&(filp as usize), &now, 0u64);
     Ok(0)
 }
