@@ -1,8 +1,6 @@
 #![no_std]
 #![no_main]
 
-use core::borrow::BorrowMut;
-
 use aya_ebpf::{
     bindings::path,
     cty::{c_uchar, c_void},
@@ -45,27 +43,6 @@ struct EventFields<'a> {
     seq: u64,
 }
 
-fn hashmap_pathentry(
-    ctx: FEntryContext,
-    path: &[c_uchar; PATHFRAGLEN],
-    pathlen: usize,
-) -> Option<&FsWriteStats> {
-    for idx in 0..NUM_PATH_PREFIX {
-        #[allow(static_mut_refs)]
-        let Some(entry) = (unsafe { WRITESTATS.get(idx) }) else {
-            return None;
-        };
-        let pathstr = unsafe { core::str::from_utf8_unchecked(path) };
-        let pathfragstr = unsafe { core::str::from_utf8_unchecked(&entry.pathfrag) };
-        let path = unsafe { pathstr.get_unchecked(..pathlen.clamp(0, PATHFRAGLEN)) };
-        let pathfrag = unsafe { pathfragstr.get_unchecked(..entry.fraglen.clamp(0, PATHFRAGLEN)) };
-        if path.starts_with(pathfrag) && !pathfrag.is_empty() {
-            return Some(entry);
-        }
-    }
-    None
-}
-
 #[fentry(function = "filp_close")]
 pub fn filp_close_entry(ctx: FEntryContext) -> u32 {
     match try_fslat_entry(ctx) {
@@ -99,15 +76,6 @@ fn try_fslat_entry(ctx: FEntryContext) -> Result<u32, u32> {
     if ret < 0 {
         return Err(1);
     }
-    // exclude trailing null
-//    let Some(entry) = hashmap_pathentry(
-//        ctx,
-//        unsafe { pathbuf_ptr.as_ref().unwrap() },
-//        (ret - 1) as usize,
-//    ) else {
-//        return Ok(0);
-//    };
-
     {
         let entryrec = EntryRec {
             timestamp: now,
