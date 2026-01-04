@@ -23,3 +23,11 @@ pub struct EntryRec {
     pub pathfrag: [c_uchar; PATHFRAGLEN],
     pub fraglen: usize,
 }
+
+pub struct EventFields<'a> {
+    pub id: &'a str,
+    pub version: &'a str,
+    pub monotonic: u64,
+    pub seq: u64,
+}
+

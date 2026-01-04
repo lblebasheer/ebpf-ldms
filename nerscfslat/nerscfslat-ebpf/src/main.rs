@@ -4,14 +4,15 @@
 use aya_ebpf::{
     bindings::path,
     cty::{c_uchar, c_void},
-    helpers::{bpf_d_path, bpf_ktime_get_ns, bpf_map_update_elem},
+    helpers::{bpf_d_path, bpf_ktime_get_ns, bpf_map_update_elem, bpf_timer_init},
     macros::{fentry, fexit, map},
     maps::{Array, HashMap, PerCpuArray, RingBuf},
     programs::{FEntryContext, FExitContext},
 };
 use aya_log_ebpf::debug;
 use minicbor::Encoder;
-use nerscfslat_common::{EntryRec, FsWriteStats, NUM_PATH_PREFIX, PATHFRAGLEN};
+use nerscfslat_common::{EntryRec, FsWriteStats, NUM_PATH_PREFIX, PATHFRAGLEN, EventFields};
+use aya_ebpf::bindings::bpf_timer;
 
 #[allow(nonstandard_style)]
 #[allow(unnecessary_transmutes)]
@@ -35,13 +36,6 @@ static PTRLIST: HashMap<usize, EntryRec> = HashMap::with_max_entries(1024, 0);
 
 #[map]
 static LDMS_SHARED_STREAM: RingBuf = RingBuf::pinned(8192, 0);
-
-struct EventFields<'a> {
-    id: &'a str,
-    version: &'a str,
-    monotonic: u64,
-    seq: u64,
-}
 
 #[fentry(function = "filp_close")]
 pub fn filp_close_entry(ctx: FEntryContext) -> u32 {
@@ -101,15 +95,34 @@ fn try_fslat_exit(ctx: FExitContext) -> Result<u32, u32> {
 
     match unsafe { PTRLIST.get(filp as usize) } {
         Some(entryrec) => {
-            let Ok(_) = update_stats(ctx, entryrec, "filp_close") else {
-                return Err(1);
-            };
-            let Ok(_) = ringbuf_put(&eventf, "filp_close", 0, "ns") else {
-                return Err(1);
-            };
-            let _ = PTRLIST.remove(&(filp as usize));
-            unsafe {
-                *countptr += 1;
+            let now = unsafe { bpf_ktime_get_ns() };
+            let delta = now - entryrec.timestamp;
+            for idx in 0..NUM_PATH_PREFIX {
+                #[allow(static_mut_refs)]
+                let Some(fsstat) = (unsafe { WRITESTATS.get_ptr_mut(idx) }) else {
+                    return Err(1);
+                };
+                let pathstr = unsafe { core::str::from_utf8_unchecked(&entryrec.pathfrag) };
+                let pathfragstr = unsafe { core::str::from_utf8_unchecked(&(*fsstat).pathfrag) };
+                let path = unsafe { pathstr.get_unchecked(..entryrec.fraglen.clamp(0, PATHFRAGLEN)) };
+                let pathfrag = unsafe { pathfragstr.get_unchecked(..(*fsstat).fraglen.clamp(0, PATHFRAGLEN)) };
+                debug!(ctx, "{}", path);
+                debug!(ctx, "-> {}", pathfrag);
+                if path.starts_with(pathfrag) && !pathfrag.is_empty() {
+                    let Ok(_) = update_stats(&ctx, idx, fsstat, delta) else {
+                        return Err(1);
+                    };
+                    let Ok(_) = setup_timer(&ctx, idx, fsstat) else {
+                        return Err(1);
+                    };
+                }
+                let Ok(_) = ringbuf_put(&eventf, "filp_close", 0, "ns") else {
+                    return Err(1);
+                };
+                let _ = PTRLIST.remove(&(filp as usize));
+                unsafe {
+                    *countptr += 1;
+                }
             }
         }
         None => {}
@@ -117,44 +130,44 @@ fn try_fslat_exit(ctx: FExitContext) -> Result<u32, u32> {
     Ok(0)
 }
 
-fn update_stats(ctx: FExitContext, entryrec: &EntryRec, op: &str) -> Result<u32, u32> {
-    let now = unsafe { bpf_ktime_get_ns() };
-    let delta = now - entryrec.timestamp;
-    for idx in 0..NUM_PATH_PREFIX {
+fn update_stats(ctx: &FExitContext, idx: u32, fsstat: *mut FsWriteStats, latency: u64) -> Result<u32, u32> {
+    unsafe {
+        let mut ws: FsWriteStats = *fsstat;
+        if latency < ws.min {
+            ws.min = latency;
+        }
+        if latency > ws.max {
+            ws.max = latency;
+        }
+        ws.total += latency;
+        ws.count += 1;
         #[allow(static_mut_refs)]
-        let Some(entry) = (unsafe { WRITESTATS.get(idx) }) else {
-            return Err(1);
-        };
-        let pathstr = unsafe { core::str::from_utf8_unchecked(&entryrec.pathfrag) };
-        let pathfragstr = unsafe { core::str::from_utf8_unchecked(&entry.pathfrag) };
-        let path = unsafe { pathstr.get_unchecked(..entryrec.fraglen.clamp(0, PATHFRAGLEN)) };
-        let pathfrag = unsafe { pathfragstr.get_unchecked(..entry.fraglen.clamp(0, PATHFRAGLEN)) };
-        debug!(ctx, "{}", path);
-        debug!(ctx, "-> {}", pathfrag);
-        if path.starts_with(pathfrag) && !pathfrag.is_empty() {
-            {
-                unsafe {
-                    let mut ws: FsWriteStats = *entry;
-                    if delta < ws.min {
-                        ws.min = delta;
-                    }
-                    if delta > ws.max {
-                        ws.max = delta;
-                    }
-                    ws.total += delta;
-                    ws.count += 1;
-                    #[allow(static_mut_refs)]
-                    bpf_map_update_elem(
-                        &raw mut WRITESTATS as *mut c_void,
-                        &raw const idx as *const c_void,
-                        &raw const ws as *const c_void,
-                        0u64,
-                    );
-                }
+        bpf_map_update_elem(
+            &raw mut WRITESTATS as *mut c_void,
+            &raw const idx as *const c_void,
+            &raw const ws as *const c_void,
+            0u64,
+        );
+    }
+    Ok(0)
+}
+
+fn setup_timer(ctx: &FExitContext, idx: u32, fsstat: *mut FsWriteStats) -> Result<u32, u32> {
+    unsafe {
+        #[allow(static_mut_refs)]
+        match bpf_timer_init(
+            &raw mut (*fsstat).timer as *mut bpf_timer,
+            &raw mut WRITESTATS as *mut c_void,
+            0u64,
+        ) {
+            -11|0 => {
+                debug!(ctx, "Timer initialized or already initialized");
+            }
+            _ => {
+                debug!(ctx, "bpf_timer_init() failed");
             }
         }
     }
-
     Ok(0)
 }
 
