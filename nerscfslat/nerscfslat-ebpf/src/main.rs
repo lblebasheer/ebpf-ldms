@@ -4,15 +4,16 @@
 use aya_ebpf::{
     bindings::path,
     cty::{c_uchar, c_void},
-    helpers::{bpf_d_path, bpf_ktime_get_ns, bpf_map_update_elem, bpf_timer_init},
+    helpers::{bpf_d_path, bpf_ktime_get_ns, bpf_map_update_elem},
     macros::{fentry, fexit, map},
     maps::{Array, HashMap, PerCpuArray, RingBuf},
     programs::{FEntryContext, FExitContext},
 };
-use aya_log_ebpf::debug;
+use aya_log_ebpf::{debug, error};
 use minicbor::Encoder;
-use nerscfslat_common::{EntryRec, FsWriteStats, NUM_PATH_PREFIX, PATHFRAGLEN, EventFields};
-use aya_ebpf::bindings::bpf_timer;
+use nerscfslat_common::{
+    AGG_INTERVAL, EntryRec, EventFields, FsWriteStats, NUM_PATH_PREFIX, PATHFRAGLEN,
+};
 
 #[allow(nonstandard_style)]
 #[allow(unnecessary_transmutes)]
@@ -104,25 +105,35 @@ fn try_fslat_exit(ctx: FExitContext) -> Result<u32, u32> {
                 };
                 let pathstr = unsafe { core::str::from_utf8_unchecked(&entryrec.pathfrag) };
                 let pathfragstr = unsafe { core::str::from_utf8_unchecked(&(*fsstat).pathfrag) };
-                let path = unsafe { pathstr.get_unchecked(..entryrec.fraglen.clamp(0, PATHFRAGLEN)) };
-                let pathfrag = unsafe { pathfragstr.get_unchecked(..(*fsstat).fraglen.clamp(0, PATHFRAGLEN)) };
+                let path =
+                    unsafe { pathstr.get_unchecked(..entryrec.fraglen.clamp(0, PATHFRAGLEN)) };
+                let pathfrag =
+                    unsafe { pathfragstr.get_unchecked(..(*fsstat).fraglen.clamp(0, PATHFRAGLEN)) };
                 debug!(ctx, "{}", path);
                 debug!(ctx, "-> {}", pathfrag);
                 if path.starts_with(pathfrag) && !pathfrag.is_empty() {
-                    let Ok(_) = update_stats(&ctx, idx, fsstat, delta) else {
-                        return Err(1);
-                    };
-                    let Ok(_) = setup_timer(&ctx, idx, fsstat) else {
-                        return Err(1);
-                    };
+                    if now - unsafe { (*fsstat).lastpublish } > AGG_INTERVAL {
+                        if unsafe { (*fsstat).count } > 0 {
+                            let Ok(_) = ringbuf_put(&eventf, fsstat, "ns") else {
+                                error!(ctx, "ringbuf_put() failed");
+                                return Err(1);
+                            };
+                            unsafe {
+                                *countptr += 1;
+                            }
+                        }
+                        let Ok(_) = clear_stats(&ctx, idx, fsstat, now) else {
+                            error!(ctx, "update_stats() failed");
+                            return Err(1);
+                        };
+                    } else {
+                        let Ok(_) = update_stats(&ctx, idx, fsstat, delta) else {
+                            error!(ctx, "update_stats() failed");
+                            return Err(1);
+                        };
+                    }
                 }
-                let Ok(_) = ringbuf_put(&eventf, "filp_close", 0, "ns") else {
-                    return Err(1);
-                };
                 let _ = PTRLIST.remove(&(filp as usize));
-                unsafe {
-                    *countptr += 1;
-                }
             }
         }
         None => {}
@@ -130,7 +141,12 @@ fn try_fslat_exit(ctx: FExitContext) -> Result<u32, u32> {
     Ok(0)
 }
 
-fn update_stats(ctx: &FExitContext, idx: u32, fsstat: *mut FsWriteStats, latency: u64) -> Result<u32, u32> {
+fn update_stats(
+    ctx: &FExitContext,
+    idx: u32,
+    fsstat: *mut FsWriteStats,
+    latency: u64,
+) -> Result<u32, u32> {
     unsafe {
         let mut ws: FsWriteStats = *fsstat;
         if latency < ws.min {
@@ -139,8 +155,9 @@ fn update_stats(ctx: &FExitContext, idx: u32, fsstat: *mut FsWriteStats, latency
         if latency > ws.max {
             ws.max = latency;
         }
-        ws.total += latency;
         ws.count += 1;
+        ws.total += latency;
+
         #[allow(static_mut_refs)]
         bpf_map_update_elem(
             &raw mut WRITESTATS as *mut c_void,
@@ -152,29 +169,41 @@ fn update_stats(ctx: &FExitContext, idx: u32, fsstat: *mut FsWriteStats, latency
     Ok(0)
 }
 
-fn setup_timer(ctx: &FExitContext, idx: u32, fsstat: *mut FsWriteStats) -> Result<u32, u32> {
+fn clear_stats(
+    ctx: &FExitContext,
+    idx: u32,
+    fsstat: *mut FsWriteStats,
+    now: u64,
+) -> Result<u32, u32> {
     unsafe {
+        let mut ws: FsWriteStats = *fsstat;
+        ws.lastpublish = now;
+        ws.count = 0;
+        ws.total = 0;
+        ws.min = u64::MAX;
+        ws.max = u64::MIN;
         #[allow(static_mut_refs)]
-        match bpf_timer_init(
-            &raw mut (*fsstat).timer as *mut bpf_timer,
+        bpf_map_update_elem(
             &raw mut WRITESTATS as *mut c_void,
+            &raw const idx as *const c_void,
+            &raw const ws as *const c_void,
             0u64,
-        ) {
-            -11|0 => {
-                debug!(ctx, "Timer initialized or already initialized");
-            }
-            _ => {
-                debug!(ctx, "bpf_timer_init() failed");
-            }
-        }
+        );
     }
     Ok(0)
 }
 
-fn ringbuf_put(eventf: &EventFields, op_name: &str, latency: u64, unit: &str) -> Result<u32, u32> {
+fn ringbuf_put(
+    eventf: &EventFields,
+    fsstat: *mut FsWriteStats,
+    unit: &str,
+) -> Result<u32, u32> {
     let Some(mut dataent) = LDMS_SHARED_STREAM.reserve::<[u8; BUFSIZE]>(0) else {
         return Err(1);
     };
+    let pathfragstr = unsafe { core::str::from_utf8_unchecked(&(*fsstat).pathfrag) };
+    let pathfrag =
+        unsafe { pathfragstr.get_unchecked(..(*fsstat).fraglen.clamp(0, PATHFRAGLEN)) };
     let EventFields {
         id,
         version,
@@ -209,17 +238,33 @@ fn ringbuf_put(eventf: &EventFields, op_name: &str, latency: u64, unit: &str) ->
             .unwrap_unchecked()
             .u64(seq)
             .unwrap_unchecked()
-            .str("latency")
+            .str("min_latency")
             .unwrap_unchecked()
-            .u64(latency)
+            .u64((*fsstat).min)
+            .unwrap_unchecked()
+            .str("max_latency")
+            .unwrap_unchecked()
+            .u64((*fsstat).max)
+            .unwrap_unchecked()
+            .str("total_latency")
+            .unwrap_unchecked()
+            .u64((*fsstat).total)
+            .unwrap_unchecked()
+            .str("count_samples")
+            .unwrap_unchecked()
+            .u64((*fsstat).count)
+            .unwrap_unchecked()
+            .str("interval")
+            .unwrap_unchecked()
+            .u64(AGG_INTERVAL)
             .unwrap_unchecked()
             .str("unit")
             .unwrap_unchecked()
             .str(unit)
             .unwrap_unchecked()
-            .str("operation")
+            .str("path_prefix")
             .unwrap_unchecked()
-            .str(op_name)
+            .str(pathfrag)
             .unwrap_unchecked()
             .end()
             .unwrap_unchecked()

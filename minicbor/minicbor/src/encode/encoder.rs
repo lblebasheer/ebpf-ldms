@@ -104,6 +104,7 @@ impl<W: Write> Encoder<W> {
     }
 
     /// Encode a `u64` value.
+#[inline(always)]
     pub fn u64(&mut self, x: u64) -> Result<&mut Self, Error<W::Error>> {
         match x {
             0        ..= 0x17        => self.put(&[x as u8]),

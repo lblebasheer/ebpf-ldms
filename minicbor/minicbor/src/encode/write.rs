@@ -19,7 +19,6 @@ impl<W: Write + ?Sized> Write for &mut W {
 impl Write for &mut [u8] {
     type Error = EndOfSlice;
 
-    #[inline(always)]
     fn write_all(&mut self, buf: &[u8]) -> Result<(), Self::Error> {
         if self.len() < buf.len() {
             return Err(EndOfSlice(()))

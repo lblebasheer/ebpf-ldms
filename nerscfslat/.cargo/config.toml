@@ -1,2 +1,5 @@
 [target."cfg(all())"]
 runner = "sudo -E"
+
+[target.bpfel_unknown_none]
+rustflags = ["-Clink-arg=--cpu=v3", "-Cllvm-args=--max-store-memcpy=0"]

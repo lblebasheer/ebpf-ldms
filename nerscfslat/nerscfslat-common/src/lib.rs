@@ -1,9 +1,9 @@
 #![no_std]
 use aya_ebpf::cty::c_uchar;
-use aya_ebpf::bindings::bpf_timer;
 
-pub const PATHFRAGLEN: usize = 32 + 1;
+pub const PATHFRAGLEN: usize = 16 + 1;
 pub const NUM_PATH_PREFIX: u32 = 8;
+pub const AGG_INTERVAL: u64 = 1000 * 1000 * 500; // 500ms
 
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -14,7 +14,7 @@ pub struct FsWriteStats {
     pub max: u64,
     pub total: u64,
     pub count: u64,
-    pub timer: bpf_timer,
+    pub lastpublish: u64,
 }
 
 #[repr(C)]
@@ -30,4 +30,3 @@ pub struct EventFields<'a> {
     pub monotonic: u64,
     pub seq: u64,
 }
-
