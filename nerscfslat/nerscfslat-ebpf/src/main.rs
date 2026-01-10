@@ -105,13 +105,13 @@ fn try_fslat_exit(ctx: FExitContext) -> Result<u32, u32> {
                 };
                 let pathstr = unsafe { core::str::from_utf8_unchecked(&entryrec.pathfrag) };
                 let pathfragstr = unsafe { core::str::from_utf8_unchecked(&(*fsstat).pathfrag) };
-                let path =
-                    unsafe { pathstr.get_unchecked(..entryrec.fraglen.clamp(0, PATHFRAGLEN)) };
-                let pathfrag =
-                    unsafe { pathfragstr.get_unchecked(..(*fsstat).fraglen.clamp(0, PATHFRAGLEN)) };
-                debug!(ctx, "{}", path);
-                debug!(ctx, "-> {}", pathfrag);
-                if path.starts_with(pathfrag) && !pathfrag.is_empty() {
+                let (path, pathfrag) = unsafe {
+                    (
+                        pathstr.get_unchecked(0..entryrec.fraglen.min(PATHFRAGLEN)),
+                        pathfragstr.get_unchecked(0..(*fsstat).fraglen.min(PATHFRAGLEN))
+                    )
+                };
+                if !pathfrag.is_empty() && path.starts_with(pathfrag) {
                     if now - unsafe { (*fsstat).lastpublish } > AGG_INTERVAL {
                         if unsafe { (*fsstat).count } > 0 {
                             let Ok(_) = ringbuf_put(&eventf, fsstat, "ns") else {

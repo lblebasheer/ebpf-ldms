@@ -1,7 +1,7 @@
 #![no_std]
 use aya_ebpf::cty::c_uchar;
 
-pub const PATHFRAGLEN: usize = 16 + 1;
+pub const PATHFRAGLEN: usize = 32 + 1;
 pub const NUM_PATH_PREFIX: u32 = 8;
 pub const AGG_INTERVAL: u64 = 1000 * 1000 * 500; // 500ms
 
