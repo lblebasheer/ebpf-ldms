@@ -17,7 +17,6 @@ pub struct FsWriteStats {
     pub lastpublish: u64,
 }
 
-#[repr(C)]
 pub struct EntryRec {
     pub timestamp: u64,
     pub pathfrag: [c_uchar; PATHFRAGLEN],

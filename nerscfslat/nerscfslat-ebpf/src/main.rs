@@ -40,7 +40,7 @@ static LDMS_SHARED_STREAM: RingBuf = RingBuf::pinned(8192, 0);
 
 #[fentry(function = "filp_close")]
 pub fn filp_close_entry(ctx: FEntryContext) -> u32 {
-    match try_fslat_entry(ctx) {
+    match try_fslat_entry(ctx, "filp_close") {
         Ok(ret) => ret,
         Err(ret) => ret,
     }
@@ -48,13 +48,13 @@ pub fn filp_close_entry(ctx: FEntryContext) -> u32 {
 
 #[fexit(function = "filp_close")]
 pub fn filp_close_exit(ctx: FExitContext) -> u32 {
-    match try_fslat_exit(ctx) {
+    match try_fslat_exit(ctx, "filp_close") {
         Ok(ret) => ret,
         Err(ret) => ret,
     }
 }
 
-fn try_fslat_entry(ctx: FEntryContext) -> Result<u32, u32> {
+fn try_fslat_entry(ctx: FEntryContext, filpop: &str) -> Result<u32, u32> {
     let now = unsafe { bpf_ktime_get_ns() };
     let filp: *mut vmlinux::file = ctx.arg(0);
     let pathptr = unsafe { &raw mut (*filp).f_path };
@@ -82,7 +82,7 @@ fn try_fslat_entry(ctx: FEntryContext) -> Result<u32, u32> {
     Ok(0)
 }
 
-fn try_fslat_exit(ctx: FExitContext) -> Result<u32, u32> {
+fn try_fslat_exit(ctx: FExitContext, filpop: &str) -> Result<u32, u32> {
     let filp: *const vmlinux::file = ctx.arg(0);
     let Some(countptr) = COUNTER.get_ptr_mut(0) else {
         return Err(1);
@@ -113,19 +113,21 @@ fn try_fslat_exit(ctx: FExitContext) -> Result<u32, u32> {
                 };
                 if !pathfrag.is_empty() && path.starts_with(pathfrag) {
                     if now - unsafe { (*fsstat).lastpublish } > AGG_INTERVAL {
-                        if unsafe { (*fsstat).count } > 0 {
-                            let Ok(_) = ringbuf_put(&eventf, fsstat, "ns") else {
-                                error!(ctx, "ringbuf_put() failed");
-                                return Err(1);
-                            };
-                            unsafe {
-                                *countptr += 1;
-                            }
-                        }
+                        let Ok(_) = update_stats(&ctx, idx, fsstat, delta) else {
+                            error!(ctx, "update_stats() failed");
+                            return Err(1);
+                        };
+                        let Ok(_) = ringbuf_put(&eventf, fsstat, filpop, "ns") else {
+                            error!(ctx, "ringbuf_put() failed");
+                            return Err(1);
+                        };
                         let Ok(_) = clear_stats(&ctx, idx, fsstat, now) else {
                             error!(ctx, "update_stats() failed");
                             return Err(1);
                         };
+                        unsafe {
+                            *countptr += 1;
+                        }
                     } else {
                         let Ok(_) = update_stats(&ctx, idx, fsstat, delta) else {
                             error!(ctx, "update_stats() failed");
@@ -196,6 +198,7 @@ fn clear_stats(
 fn ringbuf_put(
     eventf: &EventFields,
     fsstat: *mut FsWriteStats,
+    filpop: &str,
     unit: &str,
 ) -> Result<u32, u32> {
     let Some(mut dataent) = LDMS_SHARED_STREAM.reserve::<[u8; BUFSIZE]>(0) else {
@@ -233,6 +236,10 @@ fn ringbuf_put(
             .begin_array()
             .unwrap_unchecked()
             .begin_map()
+            .unwrap_unchecked()
+            .str("opname")
+            .unwrap_unchecked()
+            .str(filpop)
             .unwrap_unchecked()
             .str("sequence")
             .unwrap_unchecked()
