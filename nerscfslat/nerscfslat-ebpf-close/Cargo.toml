@@ -1,5 +1,5 @@
 [package]
-name = "nerscfslat-ebpf"
+name = "nerscfslat-ebpf-close"
 version = "0.1.0"
 edition.workspace = true
 
@@ -7,12 +7,10 @@ edition.workspace = true
 nerscfslat-common = { path = "../nerscfslat-common" }
 
 aya-ebpf = { workspace = true }
-aya-log-ebpf = { workspace = true }
-minicbor = { version = "2.1.3", path = "../../minicbor/minicbor" }
 
 [build-dependencies]
 which = { workspace = true }
 
 [[bin]]
-name = "nerscfslat"
+name = "nerscfslat-close"
 path = "src/main.rs"

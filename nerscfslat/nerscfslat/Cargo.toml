@@ -37,7 +37,8 @@ cargo_metadata = { workspace = true }
 # Finally note that *any* usage of `artifact = ...` in *any* Cargo.toml in the workspace breaks
 # workflows with stable cargo; stable cargo outright refuses to load manifests that use unstable
 # features.
-nerscfslat-ebpf = { path = "../nerscfslat-ebpf" }
+nerscfslat-ebpf-close = { path = "../nerscfslat-ebpf-close" }
+nerscfslat-ebpf-fsync = { path = "../nerscfslat-ebpf-fsync" }
 
 [[bin]]
 name = "nerscfslat"

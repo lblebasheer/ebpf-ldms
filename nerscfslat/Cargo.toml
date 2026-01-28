@@ -3,7 +3,8 @@ resolver = "2"
 members = [
     "nerscfslat",
     "nerscfslat-common",
-    "nerscfslat-ebpf",
+    "nerscfslat-ebpf-close",
+    "nerscfslat-ebpf-fsync",
 ]
 default-members = ["nerscfslat", "nerscfslat-common"]
 
@@ -26,11 +27,21 @@ log = { version = "0.4.22", default-features = false }
 tokio = { version = "1.40.0", default-features = false }
 which = { version = "6.0.0", default-features = false }
 
-[profile.release.package.nerscfslat-ebpf]
+[profile.release.package.nerscfslat-ebpf-close]
+debug = 2
+codegen-units = 1
+opt-level = 0
+
+[profile.dev.package.nerscfslat-ebpf-close]
+debug = "full"
+codegen-units = 1
+opt-level = 0
+
+[profile.release.package.nerscfslat-ebpf-fsync]
 debug = 2
 codegen-units = 1
 
-[profile.dev.package.nerscfslat-ebpf]
+[profile.dev.package.nerscfslat-ebpf-fsync]
 debug = "full"
 codegen-units = 1
 opt-level = 0
