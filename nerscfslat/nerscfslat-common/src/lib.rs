@@ -1,7 +1,7 @@
 #![no_std]
 use aya_ebpf::{
     bindings::path,
-    cty::{c_uchar, c_void},
+    cty::{c_char, c_void},
     helpers::{bpf_d_path, bpf_ktime_get_ns, bpf_map_update_elem},
     macros::map,
     maps::{Array, HashMap, PerCpuArray, RingBuf},
@@ -10,7 +10,7 @@ use aya_ebpf::{
 use aya_log_ebpf::{debug, error};
 use minicbor::Encoder;
 
-pub const PATHFRAGLEN: usize = 32 + 1;
+pub const PATHFRAGLEN: usize = 15 + 1;
 pub const NUM_PATH_PREFIX: u32 = 8;
 pub const AGG_INTERVAL: u64 = 1000 * 1000 * 500; // 500ms
 pub const BUFSIZE: usize = 1024;
@@ -22,7 +22,7 @@ pub static COUNTER: Array<u64> = Array::with_max_entries(1, 0);
 pub static mut WRITESTATS: Array<FsWriteStats> = Array::with_max_entries(NUM_PATH_PREFIX, 0);
 
 #[map]
-pub static PATHBUF: PerCpuArray<[c_uchar; PATHFRAGLEN]> = PerCpuArray::with_max_entries(1, 0);
+pub static PATHBUF: PerCpuArray<PathSlice> = PerCpuArray::with_max_entries(1, 0);
 
 #[map]
 pub static PTRLIST: HashMap<usize, EntryRec> = HashMap::with_max_entries(1024, 0);
@@ -36,10 +36,12 @@ pub static LDMS_SHARED_STREAM: RingBuf = RingBuf::pinned(8192, 0);
 #[allow(dead_code)]
 mod vmlinux;
 
-#[derive(Copy, Clone)]
+type PathSlice = [u8; PATHFRAGLEN];
+
 #[repr(C)]
+#[derive(Clone, Copy)]
 pub struct FsWriteStats {
-    pub path_prefix: [c_uchar; PATHFRAGLEN],
+    pub path_prefix: PathSlice,
     pub min: u64,
     pub max: u64,
     pub total: u64,
@@ -49,7 +51,7 @@ pub struct FsWriteStats {
 
 pub struct EntryRec {
     pub timestamp: u64,
-    pub path: [c_uchar; PATHFRAGLEN],
+    pub path: PathSlice,
 }
 
 pub struct EventFields<'a> {
@@ -57,7 +59,7 @@ pub struct EventFields<'a> {
     pub version: &'a str,
     pub monotonic: u64,
     pub seq: u64,
-    pub path_prefix: &'a str,
+    pub path_prefix: &'a [u8],
 }
 
 pub fn try_fslat_entry(ctx: FEntryContext, _filpop: &str) -> Result<u32, u32> {
@@ -70,7 +72,7 @@ pub fn try_fslat_entry(ctx: FEntryContext, _filpop: &str) -> Result<u32, u32> {
     let ret = unsafe {
         bpf_d_path(
             pathptr as *mut path,
-            pathbuf_ptr as *mut i8,
+            pathbuf_ptr as *mut c_char,
             PATHFRAGLEN as u32,
         )
     };
@@ -87,15 +89,31 @@ pub fn try_fslat_entry(ctx: FEntryContext, _filpop: &str) -> Result<u32, u32> {
     Ok(0)
 }
 
-fn find_null_pos(_ctx: &FExitContext, haystack: &[u8]) -> usize {
+fn find_null_pos(haystack: &[u8]) -> usize {
     let mut idx = 0;
-    for (i, c) in haystack.iter().enumerate() {
-        if *c == 0 {
+    for i in 0..PATHFRAGLEN {
+        if haystack[i] == 0 {
             idx = i;
             break;
         }
     }
     idx
+}
+
+pub fn starts_with(needle: &[u8], haystack: &[u8], len: usize) -> bool {
+    if needle[0] == 0 {
+        return false;
+    }
+    let mut i = 0;
+    let mut j = 0;
+    while i < len {
+        if haystack[j] != needle[i] {
+            return false;
+        }
+        i += 1;
+        j += 1;
+    }
+    true
 }
 
 pub fn try_fslat_exit(ctx: FExitContext, filpop: &str) -> Result<u32, u32> {
@@ -113,38 +131,27 @@ pub fn try_fslat_exit(ctx: FExitContext, filpop: &str) -> Result<u32, u32> {
                 let Some(fsstat) = (unsafe { WRITESTATS.get_ptr_mut(idx) }) else {
                     return Err(1);
                 };
-                let (path, path_prefix) = unsafe {
-                    let pathlen = find_null_pos(&ctx, &entryrec.path);
-                    let path_prefix_len = find_null_pos(&ctx, &(*fsstat).path_prefix);
-                    debug!(
-                        ctx,
-                        "pathlen: {}, path_prefix_len: {}", pathlen, path_prefix_len
-                    );
-                    (
-                        core::str::from_utf8_unchecked(&entryrec.path),
-                        core::str::from_utf8_unchecked(&(*fsstat).path_prefix),
-                    )
-                };
-                if !path.is_empty() && path.starts_with(path_prefix) {
+                let path_prefix_len = unsafe { find_null_pos(&(*fsstat).path_prefix) };
+                if unsafe { starts_with(&(*fsstat).path_prefix, &entryrec.path, path_prefix_len) } {
                     if now - unsafe { (*fsstat).lastpublish } > AGG_INTERVAL {
-                        let Ok(_) = update_stats(&ctx, idx, fsstat, delta) else {
-                            error!(ctx, "update_stats() failed");
-                            return Err(1);
-                        };
-
                         let eventf = EventFields {
                             id: "fslat",
                             version: "v1",
                             monotonic: unsafe { bpf_ktime_get_ns() },
                             seq: unsafe { *countptr },
-                            path_prefix: path_prefix,
+                            path_prefix: unsafe { &(*fsstat).path_prefix },
+                        };
+
+                        let Ok(_) = update_stats(&ctx, idx, fsstat, delta) else {
+                            error!(ctx, "update_stats() failed");
+                            return Err(1);
                         };
                         let Ok(_) = ringbuf_put(&eventf, fsstat, filpop, "ns") else {
                             error!(ctx, "ringbuf_put() failed");
                             return Err(1);
                         };
                         let Ok(_) = clear_stats(&ctx, idx, fsstat, now) else {
-                            error!(ctx, "update_stats() failed");
+                            error!(ctx, "clear_stats() failed");
                             return Err(1);
                         };
                         unsafe {
@@ -172,6 +179,7 @@ pub fn update_stats(
     latency: u64,
 ) -> Result<u32, u32> {
     unsafe {
+        #[allow(static_mut_refs)]
         let mut ws: FsWriteStats = *fsstat;
         if latency < ws.min {
             ws.min = latency;
@@ -200,6 +208,7 @@ pub fn clear_stats(
     now: u64,
 ) -> Result<u32, u32> {
     unsafe {
+        #[allow(static_mut_refs)]
         let mut ws: FsWriteStats = *fsstat;
         ws.lastpublish = now;
         ws.count = 0;
@@ -223,6 +232,7 @@ pub fn ringbuf_put(
     filpop: &str,
     unit: &str,
 ) -> Result<u32, u32> {
+    #[allow(static_mut_refs)]
     let Some(mut dataent) = LDMS_SHARED_STREAM.reserve::<[u8; BUFSIZE]>(0) else {
         return Err(1);
     };
@@ -292,7 +302,9 @@ pub fn ringbuf_put(
             .unwrap_unchecked()
             .str("path_prefix")
             .unwrap_unchecked()
-            .str(path_prefix)
+            .str(core::str::from_utf8_unchecked(
+                path_prefix.split_at_unchecked(find_null_pos(path_prefix)).0,
+            ))
             .unwrap_unchecked()
             .end()
             .unwrap_unchecked()
