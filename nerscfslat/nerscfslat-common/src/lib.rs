@@ -2,7 +2,10 @@
 use aya_ebpf::{
     bindings::path,
     cty::{c_char, c_void},
-    helpers::{bpf_d_path, bpf_ktime_get_ns, bpf_map_update_elem},
+    helpers::{
+        bpf_d_path, bpf_ktime_get_ns, bpf_map_update_elem, bpf_probe_read_kernel_str_bytes,
+        bpf_probe_read_user_str_bytes,
+    },
     macros::map,
     maps::{Array, HashMap, PerCpuArray, RingBuf},
     programs::{FEntryContext, FExitContext},
@@ -10,10 +13,13 @@ use aya_ebpf::{
 use aya_log_ebpf::{debug, error};
 use minicbor::Encoder;
 
-pub const PATHFRAGLEN: usize = 15 + 1;
-pub const NUM_PATH_PREFIX: u32 = 8;
-pub const AGG_INTERVAL: u64 = 1000 * 1000 * 500; // 500ms
-pub const BUFSIZE: usize = 1024;
+const PATHFRAGLEN: usize = 15 + 1;
+const PATHCOMPLEN: usize = 16;
+const NUM_PATH_PREFIX: u32 = 8;
+const AGG_INTERVAL: u64 = 1000 * 1000 * 500; // 500ms
+const BUFSIZE: usize = 1024;
+const NUM_COMP: u32 = 3;
+const MAX_PARENT: u32 = 100;
 
 #[map]
 pub static COUNTER: Array<u64> = Array::with_max_entries(1, 0);
@@ -23,6 +29,9 @@ pub static mut WRITESTATS: Array<FsWriteStats> = Array::with_max_entries(NUM_PAT
 
 #[map]
 pub static PATHBUF: PerCpuArray<PathSlice> = PerCpuArray::with_max_entries(1, 0);
+
+#[map]
+pub static PATHBUFTMP: PerCpuArray<PathComponent> = PerCpuArray::with_max_entries(3, 0);
 
 #[map]
 pub static PTRLIST: HashMap<usize, EntryRec> = HashMap::with_max_entries(1024, 0);
@@ -37,6 +46,7 @@ pub static LDMS_SHARED_STREAM: RingBuf = RingBuf::pinned(8192, 0);
 mod vmlinux;
 
 type PathSlice = [u8; PATHFRAGLEN];
+type PathComponent = [u8; PATHCOMPLEN];
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -76,6 +86,7 @@ pub fn try_fslat_entry(ctx: FEntryContext, _filpop: &str) -> Result<u32, u32> {
             PATHFRAGLEN as u32,
         )
     };
+    let x = partial_d_path(&ctx, pathptr as *const vmlinux::path);
     if ret < 0 {
         return Err(1);
     }
@@ -89,9 +100,9 @@ pub fn try_fslat_entry(ctx: FEntryContext, _filpop: &str) -> Result<u32, u32> {
     Ok(0)
 }
 
-fn find_null_pos(haystack: &[u8]) -> usize {
+fn find_null_pos(haystack: &[u8], maxlen: usize) -> usize {
     let mut idx = 0;
-    for i in 0..PATHFRAGLEN {
+    for i in 0..maxlen {
         if haystack[i] == 0 {
             idx = i;
             break;
@@ -116,6 +127,28 @@ pub fn starts_with(needle: &[u8], haystack: &[u8], len: usize) -> bool {
     true
 }
 
+pub fn partial_d_path(ctx: &FEntryContext, path: *const vmlinux::path) -> Result<u32, u32> {
+    for i in 0..MAX_PARENT {
+        let Some(buf_elem) = PATHBUFTMP.get_ptr_mut(i % NUM_COMP) else {
+            return Err(1);
+        };
+        let d_name = unsafe {
+            bpf_probe_read_kernel_str_bytes(
+                (*((*path).dentry)).d_name.name,
+                &mut *buf_elem as &mut [u8],
+            )
+            .unwrap_unchecked()
+        };
+        debug!(ctx, "pathcomp {}", unsafe {
+            core::str::from_utf8_unchecked(d_name)
+        });
+        if unsafe { ((*((*path).dentry)).d_parent) == (*path).dentry } {
+            break;
+        }
+    }
+    Ok(0)
+}
+
 pub fn try_fslat_exit(ctx: FExitContext, filpop: &str) -> Result<u32, u32> {
     let filp: *const vmlinux::file = ctx.arg(0);
     let Some(countptr) = COUNTER.get_ptr_mut(0) else {
@@ -131,7 +164,7 @@ pub fn try_fslat_exit(ctx: FExitContext, filpop: &str) -> Result<u32, u32> {
                 let Some(fsstat) = (unsafe { WRITESTATS.get_ptr_mut(idx) }) else {
                     return Err(1);
                 };
-                let path_prefix_len = unsafe { find_null_pos(&(*fsstat).path_prefix) };
+                let path_prefix_len = unsafe { find_null_pos(&(*fsstat).path_prefix, PATHFRAGLEN) };
                 if unsafe { starts_with(&(*fsstat).path_prefix, &entryrec.path, path_prefix_len) } {
                     if now - unsafe { (*fsstat).lastpublish } > AGG_INTERVAL {
                         let eventf = EventFields {
@@ -303,7 +336,9 @@ pub fn ringbuf_put(
             .str("path_prefix")
             .unwrap_unchecked()
             .str(core::str::from_utf8_unchecked(
-                path_prefix.split_at_unchecked(find_null_pos(path_prefix)).0,
+                path_prefix
+                    .split_at_unchecked(find_null_pos(path_prefix, PATHFRAGLEN))
+                    .0,
             ))
             .unwrap_unchecked()
             .end()
