@@ -3,8 +3,8 @@ use aya_ebpf::{
     bindings::path,
     cty::{c_char, c_void},
     helpers::{
-        bpf_d_path, bpf_ktime_get_ns, bpf_map_update_elem, bpf_probe_read_kernel_str_bytes,
-        bpf_probe_read_user_str_bytes,
+        bpf_d_path, bpf_get_current_task_btf, bpf_ktime_get_ns, bpf_map_update_elem,
+        bpf_probe_read_kernel, bpf_probe_read_kernel_str_bytes,
     },
     macros::map,
     maps::{Array, HashMap, PerCpuArray, RingBuf},
@@ -13,13 +13,13 @@ use aya_ebpf::{
 use aya_log_ebpf::{debug, error};
 use minicbor::Encoder;
 
-const PATHFRAGLEN: usize = 15 + 1;
-const PATHCOMPLEN: usize = 16;
+const PATHFRAGLEN: usize = 16 + 1;
+const PATHCOMPLEN: usize = PATHFRAGLEN;
 const NUM_PATH_PREFIX: u32 = 8;
 const AGG_INTERVAL: u64 = 1000 * 1000 * 500; // 500ms
 const BUFSIZE: usize = 1024;
 const NUM_COMP: u32 = 3;
-const MAX_PARENT: u32 = 100;
+const MAX_PARENT: u32 = 80;
 
 #[map]
 pub static COUNTER: Array<u64> = Array::with_max_entries(1, 0);
@@ -128,22 +128,55 @@ pub fn starts_with(needle: &[u8], haystack: &[u8], len: usize) -> bool {
 }
 
 pub fn partial_d_path(ctx: &FEntryContext, path: *const vmlinux::path) -> Result<u32, u32> {
+    let (mut dentry_ptr, mut dentry) = unsafe {
+        let dentry_ptr = (*path).dentry;
+        let dentry =
+            bpf_probe_read_kernel((*path).dentry as *const vmlinux::dentry).unwrap_unchecked();
+        (dentry_ptr, dentry)
+    };
+    let (mut mnt_ptr_addr, mut mnt) = unsafe {
+        let vfsmount = (*path).mnt;
+        let offset = core::mem::offset_of!(vmlinux::mount, mnt);
+        let mnt_ptr_addr = vfsmount.wrapping_sub(offset) as *const vmlinux::mount;
+        let mnt: vmlinux::mount = bpf_probe_read_kernel(
+            (vfsmount as *const u8).wrapping_sub(offset) as *const vmlinux::mount,
+        )
+        .unwrap_unchecked();
+        (mnt_ptr_addr, mnt)
+    };
+    let current = unsafe { bpf_get_current_task_btf() as *const vmlinux::task_struct };
+    let root_path = unsafe { &raw const (*(*current).fs).root };
+
     for i in 0..MAX_PARENT {
         let Some(buf_elem) = PATHBUFTMP.get_ptr_mut(i % NUM_COMP) else {
             return Err(1);
         };
-        let d_name = unsafe {
-            bpf_probe_read_kernel_str_bytes(
-                (*((*path).dentry)).d_name.name,
+        unsafe {
+            if dentry_ptr == (*root_path).dentry || (&raw const mnt.mnt) == (*root_path).mnt {
+                return Ok(0);
+            }
+            if dentry_ptr == mnt.mnt.mnt_root {
+                let m = mnt.mnt_parent;
+                if m == mnt_ptr_addr as *mut vmlinux::mount {
+                    return Ok(0);
+                }
+                dentry_ptr = mnt.mnt_mountpoint;
+                dentry = bpf_probe_read_kernel(mnt.mnt_mountpoint).unwrap_unchecked();
+                mnt_ptr_addr = mnt.mnt_parent;
+                mnt = bpf_probe_read_kernel(m).unwrap_unchecked();
+                continue;
+            }
+            if dentry_ptr == dentry.d_parent {
+                return Ok(0);
+            }
+            let d_name = bpf_probe_read_kernel_str_bytes(
+                dentry.d_name.name,
                 &mut *buf_elem as &mut [u8],
             )
-            .unwrap_unchecked()
-        };
-        debug!(ctx, "pathcomp {}", unsafe {
-            core::str::from_utf8_unchecked(d_name)
-        });
-        if unsafe { ((*((*path).dentry)).d_parent) == (*path).dentry } {
-            break;
+            .unwrap_unchecked();
+            debug!(ctx, "pathcomp {}", core::str::from_utf8_unchecked(d_name));
+            dentry_ptr = dentry.d_parent;
+            dentry = bpf_probe_read_kernel(dentry.d_parent as *const vmlinux::dentry).unwrap_unchecked();
         }
     }
     Ok(0)
