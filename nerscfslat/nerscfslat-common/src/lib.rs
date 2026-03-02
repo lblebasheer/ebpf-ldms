@@ -255,13 +255,13 @@ pub fn partial_d_path(
             (*buf_elem).len = d_name.len();
             assem_ctx.start = (pathidx % NUM_COMP) as u32;
             pathidx += 1;
-            debug!(ctx, "path: {}", core::str::from_utf8_unchecked(d_name));
             dentry_ptr = dentry_d_parent_ptr;
+            debug!(ctx, "path: {}", core::str::from_utf8_unchecked(d_name));
         }
     }
     unsafe {
         bpf_loop(
-            NUM_COMP,
+            NUM_COMP.min(pathidx),
             assemble_pathfrag as *mut c_void,
             &mut assem_ctx as *mut AssembleCtx as *mut c_void,
             0_u64,
@@ -307,8 +307,16 @@ extern "C" fn assemble_pathfrag(index: u32, ctx: *mut AssembleCtx) -> u64 {
         ) {
             return 1;
         }
-
-        (*ctx).copied = copied as u32 + remaining.min(len);
+        if index != NUM_COMP - 1 {
+            bpf_dynptr_write(
+                (*ctx).pathfrag_dynptr as *const bpf_dynptr,
+                copied + len,
+                &b'/' as *const u8 as *mut c_void,
+                1u32,
+                0u64,
+            );
+        }
+        (*ctx).copied = copied as u32 + remaining.min(len) + 1;
     }
     0
 }
