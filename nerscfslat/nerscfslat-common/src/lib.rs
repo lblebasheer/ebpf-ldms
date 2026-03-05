@@ -21,8 +21,8 @@ const NUM_PATH_PREFIX: u32 = 8;
 const AGG_INTERVAL: u64 = 1000 * 1000 * 500; // 500ms
 const BUFSIZE: usize = 1024;
 const NUM_COMP: u32 = 3;
-const MAX_PARENT: u32 = 5;
-const MAX_PARENT_LOOP: u32 = 10;
+const MAX_PARENT: u32 = 32;
+const MAX_PARENT_LOOP: u32 = 64;
 
 #[map]
 pub static COUNTER: Array<u64> = Array::with_max_entries(1, 0);
@@ -88,7 +88,18 @@ pub struct EventFields<'a> {
 struct AssembleCtx<'a> {
     start: u32,
     copied: u32,
+    max_pathidx: u32,
     pathfrag_dynptr: *mut bpf_dynptr,
+    ctx: &'a FEntryContext,
+}
+
+struct PathWalkCtx<'a> {
+    dentry: *mut vmlinux::dentry,
+    mnt: *const vmlinux::mount,
+    pathidx: u32,
+    start: u32,
+    root_dentry: *mut vmlinux::dentry,
+    root_vfsmount: *const vmlinux::vfsmount,
     ctx: &'a FEntryContext,
 }
 
@@ -99,7 +110,7 @@ pub fn try_fslat_entry(ctx: FEntryContext, _filpop: &str) -> Result<u32, u32> {
     let Some(pathbuf_ptr) = PATHBUF.get_ptr_mut(0) else {
         return Err(1);
     };
-    let ret = partial_d_path(&ctx, pathptr as *const vmlinux::path, pathbuf_ptr);
+    let mut ret = partial_d_path(&ctx, pathptr as *const vmlinux::path, pathbuf_ptr);
     if ret < 0 {
         return Err(1);
     }
@@ -110,35 +121,30 @@ pub fn try_fslat_entry(ctx: FEntryContext, _filpop: &str) -> Result<u32, u32> {
         };
         let _ = PTRLIST.insert(&(filp as usize), &entryrec, 0u64);
     }
+    ret = ret.clamp(0, PATHFRAGLEN as i32);
     debug!(ctx, "assemComp {}", unsafe {
-        core::str::from_utf8_unchecked(&*pathbuf_ptr)
+        core::str::from_utf8_unchecked(&(*pathbuf_ptr).get_unchecked(..ret as usize))
     });
     Ok(0)
 }
 
 fn find_null_pos(haystack: &[u8], maxlen: usize) -> usize {
-    let mut idx = 0;
     for i in 0..maxlen {
         if haystack[i] == 0 {
-            idx = i;
-            break;
+            return i;
         }
     }
-    idx
+    0 
 }
 
 pub fn starts_with(needle: &[u8], haystack: &[u8], len: usize) -> bool {
-    if needle[0] == 0 {
+    if len == 0 {
         return false;
     }
-    let mut i = 0;
-    let mut j = 0;
-    while i < len {
-        if haystack[j] != needle[i] {
+    for i in 0..len {
+        if haystack[i] != needle[i] {
             return false;
         }
-        i += 1;
-        j += 1;
     }
     true
 }
@@ -160,14 +166,8 @@ pub fn partial_d_path(
         );
     }
 
-    let mut assem_ctx = AssembleCtx {
-        start: 0,
-        copied: 0,
-        pathfrag_dynptr: &mut pathfrag_dynptr as *mut bpf_dynptr,
-        ctx,
-    };
     // struct path { struct dentry *dentry }
-    let mut dentry_ptr = unsafe {
+    let dentry = unsafe {
         bpf_probe_read_kernel(&raw const (*path).dentry as *const *mut vmlinux::dentry)
             .unwrap_unchecked()
     };
@@ -178,88 +178,58 @@ pub fn partial_d_path(
     };
     // container_of(vfsmount_ptr, mount, mnt)
     // find the address of the struct mount that contains struct vfsmount at address vfsmount_ptr
-    let mut mnt_ptr =
-        unsafe { vfsmount_ptr.sub(offset_of!(vmlinux::mount, mnt)) as *const vmlinux::mount };
+    let mnt =
+        unsafe { vfsmount_ptr.byte_sub(offset_of!(vmlinux::mount, mnt)) as *const vmlinux::mount };
 
     let current = unsafe { bpf_get_current_task_btf() as *const vmlinux::task_struct };
-    let root_path_mnt_ptr = unsafe {
+    let root_vfsmount = unsafe {
         bpf_probe_read_kernel(
             &raw const (*(*current).fs).root.mnt as *const *const vmlinux::vfsmount,
         )
         .unwrap_unchecked()
     };
-    let root_path_dentry_ptr = unsafe {
+    let root_dentry = unsafe {
         bpf_probe_read_kernel(
             &raw const (*(*current).fs).root.dentry as *const *mut vmlinux::dentry,
         )
         .unwrap_unchecked()
     };
 
-    let mut pathidx = 0;
-    for _i in 0..MAX_PARENT_LOOP {
-        if pathidx > MAX_PARENT {
-            break;
-        }
-        // fs/d_path.c: const struct dentry *parent = READ_ONCE(dentry->d_parent)
-        let dentry_d_parent_ptr = unsafe {
-            bpf_probe_read_kernel(&raw const (*dentry_ptr).d_parent as *const *mut vmlinux::dentry)
-                .unwrap_unchecked()
-        };
-        // Update all the pointers that are derived from mnt_ptr
-        let mnt_mnt_ptr = unsafe { &raw const (*mnt_ptr).mnt as *const vmlinux::vfsmount };
-        // struct mount { struct vfsmount mnt { struct dentry *mnt_root } }
-        let mnt_mnt_mnt_root_ptr = unsafe {
-            bpf_probe_read_kernel(&raw const (*mnt_mnt_ptr).mnt_root as *const *mut vmlinux::dentry)
-                .unwrap_unchecked()
-        };
-        // fs/d_path.c: while (dentry != root->dentry || &mnt->mnt != root->mnt) {
-        if dentry_ptr == root_path_dentry_ptr && mnt_mnt_ptr == root_path_mnt_ptr {
-            break;
-        }
-        unsafe {
-            // fs/d_path.c: if (dentry == mnt->mnt.mnt_root) {
-            if dentry_ptr == mnt_mnt_mnt_root_ptr {
-                // fs/d_path.c: struct mount *m = READ_ONCE(mnt->mnt_parent)
-                let m = bpf_probe_read_kernel(
-                    &raw const (*mnt_ptr).mnt_parent as *const *const vmlinux::mount,
-                )
-                .unwrap_unchecked();
-                if mnt_ptr != m {
-                    // struct mount { struct dentry *mnt_mountpoint }
-                    // fs/d_path.c: dentry = READ_ONCE(mnt->mnt_mountpoint)
-                    dentry_ptr = bpf_probe_read_kernel(
-                        &raw const (*mnt_ptr).mnt_mountpoint as *const *mut vmlinux::dentry,
-                    )
-                    .unwrap_unchecked();
-                    // fs/d_path.c: mnt = m
-                    mnt_ptr = m;
-                    continue;
-                }
-            }
-            // fs/d_path.c: if (unlikely(dentry == parent))
-            if dentry_ptr == dentry_d_parent_ptr {
-                break;
-            }
-            let dentry_d_name = bpf_probe_read_kernel(
-                &raw const (*dentry_ptr).d_name.name as *const *const c_uchar,
-            )
-            .unwrap_unchecked();
-            let Some(buf_elem) = PATHBUFTMP.get_ptr_mut(pathidx % NUM_COMP) else {
-                return -1;
-            };
-            let d_name = bpf_probe_read_kernel_str_bytes(
-                dentry_d_name,
-                &mut (*buf_elem).pathcomp as &mut [u8],
-            )
-            .unwrap_unchecked();
-            (*buf_elem).len = d_name.len();
-            assem_ctx.start = (pathidx % NUM_COMP) as u32;
-            pathidx += 1;
-            dentry_ptr = dentry_d_parent_ptr;
-            debug!(ctx, "path: {}", core::str::from_utf8_unchecked(d_name));
-        }
-    }
+    let mut walk_ctx = PathWalkCtx {
+        dentry,
+        mnt,
+        pathidx: 0,
+        start: 0,
+        root_dentry,
+        root_vfsmount,
+        ctx,
+    };
     unsafe {
+        bpf_loop(
+            MAX_PARENT_LOOP,
+            path_walk_step as *mut c_void,
+            &mut walk_ctx as *mut PathWalkCtx as *mut c_void,
+            0u64,
+        );
+    }
+
+    let pathidx = walk_ctx.pathidx;
+    let mut assem_ctx = AssembleCtx {
+        start: walk_ctx.start,
+        copied: 0,
+        max_pathidx: NUM_COMP.min(pathidx),
+        pathfrag_dynptr: &mut pathfrag_dynptr as *mut bpf_dynptr,
+        ctx,
+    };
+    unsafe {
+        bpf_dynptr_write(
+            &pathfrag_dynptr as *const bpf_dynptr,
+            0,
+            &b'/' as *const u8 as *mut c_void,
+            1u32,
+            0u64,
+        );
+        assem_ctx.copied = 1;
         bpf_loop(
             NUM_COMP.min(pathidx),
             assemble_pathfrag as *mut c_void,
@@ -277,8 +247,75 @@ pub fn partial_d_path(
     assem_ctx.copied as i32
 }
 
+extern "C" fn path_walk_step(_index: u32, ctx: *mut PathWalkCtx) -> u64 {
+    unsafe {
+        if (*ctx).pathidx > MAX_PARENT {
+            return 1;
+        }
+        let dentry = (*ctx).dentry;
+        let mnt = (*ctx).mnt;
+        // fs/d_path.c: const struct dentry *parent = READ_ONCE(dentry->d_parent)
+        let parent = bpf_probe_read_kernel(
+            &raw const (*dentry).d_parent as *const *mut vmlinux::dentry,
+        )
+        .unwrap_unchecked();
+        // &mnt->mnt: the embedded struct vfsmount within struct mount
+        let vfsmount = &raw const (*mnt).mnt as *const vmlinux::vfsmount;
+        // mnt->mnt.mnt_root: the root dentry of the current mount
+        let mnt_root = bpf_probe_read_kernel(
+            &raw const (*vfsmount).mnt_root as *const *mut vmlinux::dentry,
+        )
+        .unwrap_unchecked();
+        // fs/d_path.c: while (dentry != root->dentry || &mnt->mnt != root->mnt) {
+        if dentry == (*ctx).root_dentry && vfsmount == (*ctx).root_vfsmount {
+            return 1;
+        }
+        // fs/d_path.c: if (dentry == mnt->mnt.mnt_root) {
+        if dentry == mnt_root {
+            // fs/d_path.c: struct mount *m = READ_ONCE(mnt->mnt_parent)
+            let parent_mnt = bpf_probe_read_kernel(
+                &raw const (*mnt).mnt_parent as *const *const vmlinux::mount,
+            )
+            .unwrap_unchecked();
+            if mnt != parent_mnt {
+                // fs/d_path.c: dentry = READ_ONCE(mnt->mnt_mountpoint)
+                (*ctx).dentry = bpf_probe_read_kernel(
+                    &raw const (*mnt).mnt_mountpoint as *const *mut vmlinux::dentry,
+                )
+                .unwrap_unchecked();
+                // fs/d_path.c: mnt = m
+                (*ctx).mnt = parent_mnt;
+                return 0;
+            }
+        }
+        // fs/d_path.c: if (unlikely(dentry == parent))
+        if dentry == parent {
+            return 1;
+        }
+        let name_ptr = bpf_probe_read_kernel(
+            &raw const (*dentry).d_name.name as *const *const c_uchar,
+        )
+        .unwrap_unchecked();
+        let pathidx = (*ctx).pathidx;
+        let Some(comp) = PATHBUFTMP.get_ptr_mut(pathidx % NUM_COMP) else {
+            return 1;
+        };
+        let name = bpf_probe_read_kernel_str_bytes(
+            name_ptr,
+            &mut (*comp).pathcomp as &mut [u8],
+        )
+        .unwrap_unchecked();
+        (*comp).len = name.len();
+        (*ctx).start = (pathidx % NUM_COMP) as u32;
+        (*ctx).pathidx += 1;
+        (*ctx).dentry = parent;
+        debug!((*ctx).ctx, "path: {}", core::str::from_utf8_unchecked(name));
+    }
+    0
+}
+
 extern "C" fn assemble_pathfrag(index: u32, ctx: *mut AssembleCtx) -> u64 {
-    let idx = unsafe { ((*ctx).start - index) % NUM_COMP };
+    let idx = unsafe { ((*ctx).start + NUM_COMP - index) % NUM_COMP };
     let Some(buf_elem) = PATHBUFTMP.get(idx) else {
         unsafe { debug!((*ctx).ctx, "bad index into PATHBUFTMP") };
         return 1;
@@ -307,7 +344,7 @@ extern "C" fn assemble_pathfrag(index: u32, ctx: *mut AssembleCtx) -> u64 {
         ) {
             return 1;
         }
-        if index != NUM_COMP - 1 {
+        if index != (*ctx).max_pathidx - 1 {
             bpf_dynptr_write(
                 (*ctx).pathfrag_dynptr as *const bpf_dynptr,
                 copied + len,
@@ -315,8 +352,10 @@ extern "C" fn assemble_pathfrag(index: u32, ctx: *mut AssembleCtx) -> u64 {
                 1u32,
                 0u64,
             );
+            (*ctx).copied = copied as u32 + remaining.min(len) + 1;
+        } else {
+            (*ctx).copied = copied as u32 + remaining.min(len);
         }
-        (*ctx).copied = copied as u32 + remaining.min(len) + 1;
     }
     0
 }
@@ -369,8 +408,8 @@ pub fn try_fslat_exit(ctx: FExitContext, filpop: &str) -> Result<u32, u32> {
                         };
                     }
                 }
-                let _ = PTRLIST.remove(&(filp as usize));
             }
+            let _ = PTRLIST.remove(&(filp as usize));
         }
         None => {}
     };
