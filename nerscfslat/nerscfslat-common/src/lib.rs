@@ -21,7 +21,7 @@ const NUM_PATH_PREFIX: u32 = 8;
 const AGG_INTERVAL: u64 = 1000 * 1000 * 500; // 500ms
 const BUFSIZE: usize = 1024;
 const NUM_COMP: u32 = 3;
-const MAX_PARENT: u32 = 32;
+const MAX_PARENT: u32 = 16;
 const MAX_PARENT_LOOP: u32 = 64;
 
 #[map]
