@@ -15,7 +15,7 @@ use aya_ebpf::{
 use aya_log_ebpf::{debug, error};
 use minicbor::Encoder;
 
-const PATHFRAGLEN: usize = 16 + 1;
+const PATHFRAGLEN: usize = 16;
 const PATHCOMPLEN: usize = PATHFRAGLEN;
 const NUM_PATH_PREFIX: u32 = 8;
 const AGG_INTERVAL: u64 = 1000 * 1000 * 500; // 500ms
@@ -139,10 +139,10 @@ fn find_null_pos(haystack: &[u8], maxlen: usize) -> usize {
 }
 
 pub fn starts_with(needle: &[u8], haystack: &[u8], len: usize) -> bool {
-    if len == 0 || haystack.len() < len {
+    if len == 0 || len > haystack.len() {
         return false;
     }
-    for i in 0..len {
+    for i in 0..len.clamp(1, PATHFRAGLEN) {
         if haystack[i] != needle[i] {
             return false;
         }
@@ -369,8 +369,7 @@ pub fn try_fslat_exit(ctx: FExitContext, filpop: &str) -> Result<u32, u32> {
                 let Some(fsstat) = (unsafe { WRITESTATS.get_ptr_mut(idx) }) else {
                     return Err(1);
                 };
-                let path_prefix_len = unsafe { find_null_pos(&(*fsstat).path_prefix, PATHFRAGLEN) };
-                if unsafe { starts_with(&(*fsstat).path_prefix, &entryrec.path, path_prefix_len) } {
+                if unsafe { starts_with(&(*fsstat).path_prefix, &entryrec.path, (*fsstat).pathlen as usize) } {
                     if now - unsafe { (*fsstat).lastpublish } > AGG_INTERVAL {
                         let eventf = EventFields {
                             id: "fslat",
