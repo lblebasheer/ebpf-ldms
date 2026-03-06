@@ -21,7 +21,7 @@ const NUM_PATH_PREFIX: u32 = 8;
 const AGG_INTERVAL: u64 = 1000 * 1000 * 500; // 500ms
 const BUFSIZE: usize = 1024;
 const NUM_COMP: u32 = 3;
-const MAX_PARENT: u32 = 16;
+const MAX_PARENT: u32 = 32;
 const MAX_PARENT_LOOP: u32 = 64;
 
 #[map]
@@ -61,6 +61,7 @@ pub struct PathComponent {
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct FsWriteStats {
+    pub pathlen: u32,
     pub path_prefix: PathSlice,
     pub min: u64,
     pub max: u64,
@@ -134,11 +135,11 @@ fn find_null_pos(haystack: &[u8], maxlen: usize) -> usize {
             return i;
         }
     }
-    0 
+    return maxlen;
 }
 
 pub fn starts_with(needle: &[u8], haystack: &[u8], len: usize) -> bool {
-    if len == 0 {
+    if len == 0 || haystack.len() < len {
         return false;
     }
     for i in 0..len {
@@ -255,17 +256,15 @@ extern "C" fn path_walk_step(_index: u32, ctx: *mut PathWalkCtx) -> u64 {
         let dentry = (*ctx).dentry;
         let mnt = (*ctx).mnt;
         // fs/d_path.c: const struct dentry *parent = READ_ONCE(dentry->d_parent)
-        let parent = bpf_probe_read_kernel(
-            &raw const (*dentry).d_parent as *const *mut vmlinux::dentry,
-        )
-        .unwrap_unchecked();
+        let parent =
+            bpf_probe_read_kernel(&raw const (*dentry).d_parent as *const *mut vmlinux::dentry)
+                .unwrap_unchecked();
         // &mnt->mnt: the embedded struct vfsmount within struct mount
         let vfsmount = &raw const (*mnt).mnt as *const vmlinux::vfsmount;
         // mnt->mnt.mnt_root: the root dentry of the current mount
-        let mnt_root = bpf_probe_read_kernel(
-            &raw const (*vfsmount).mnt_root as *const *mut vmlinux::dentry,
-        )
-        .unwrap_unchecked();
+        let mnt_root =
+            bpf_probe_read_kernel(&raw const (*vfsmount).mnt_root as *const *mut vmlinux::dentry)
+                .unwrap_unchecked();
         // fs/d_path.c: while (dentry != root->dentry || &mnt->mnt != root->mnt) {
         if dentry == (*ctx).root_dentry && vfsmount == (*ctx).root_vfsmount {
             return 1;
@@ -273,10 +272,9 @@ extern "C" fn path_walk_step(_index: u32, ctx: *mut PathWalkCtx) -> u64 {
         // fs/d_path.c: if (dentry == mnt->mnt.mnt_root) {
         if dentry == mnt_root {
             // fs/d_path.c: struct mount *m = READ_ONCE(mnt->mnt_parent)
-            let parent_mnt = bpf_probe_read_kernel(
-                &raw const (*mnt).mnt_parent as *const *const vmlinux::mount,
-            )
-            .unwrap_unchecked();
+            let parent_mnt =
+                bpf_probe_read_kernel(&raw const (*mnt).mnt_parent as *const *const vmlinux::mount)
+                    .unwrap_unchecked();
             if mnt != parent_mnt {
                 // fs/d_path.c: dentry = READ_ONCE(mnt->mnt_mountpoint)
                 (*ctx).dentry = bpf_probe_read_kernel(
@@ -292,19 +290,15 @@ extern "C" fn path_walk_step(_index: u32, ctx: *mut PathWalkCtx) -> u64 {
         if dentry == parent {
             return 1;
         }
-        let name_ptr = bpf_probe_read_kernel(
-            &raw const (*dentry).d_name.name as *const *const c_uchar,
-        )
-        .unwrap_unchecked();
+        let name_ptr =
+            bpf_probe_read_kernel(&raw const (*dentry).d_name.name as *const *const c_uchar)
+                .unwrap_unchecked();
         let pathidx = (*ctx).pathidx;
         let Some(comp) = PATHBUFTMP.get_ptr_mut(pathidx % NUM_COMP) else {
             return 1;
         };
-        let name = bpf_probe_read_kernel_str_bytes(
-            name_ptr,
-            &mut (*comp).pathcomp as &mut [u8],
-        )
-        .unwrap_unchecked();
+        let name = bpf_probe_read_kernel_str_bytes(name_ptr, &mut (*comp).pathcomp as &mut [u8])
+            .unwrap_unchecked();
         (*comp).len = name.len();
         (*ctx).start = (pathidx % NUM_COMP) as u32;
         (*ctx).pathidx += 1;
@@ -490,6 +484,7 @@ pub fn ringbuf_put(
     } = *eventf;
     let dataent_bytes: *mut [u8] = dataent.as_mut_ptr();
     let mut encoder = unsafe { Encoder::new(&mut *dataent_bytes) };
+    let pathlen = unsafe { (*fsstat).pathlen.clamp(0, PATHFRAGLEN as u32) };
     unsafe {
         encoder
             .begin_map()
@@ -547,9 +542,7 @@ pub fn ringbuf_put(
             .str("path_prefix")
             .unwrap_unchecked()
             .str(core::str::from_utf8_unchecked(
-                path_prefix
-                    .split_at_unchecked(find_null_pos(path_prefix, PATHFRAGLEN))
-                    .0,
+                path_prefix.split_at_unchecked(pathlen as usize).0,
             ))
             .unwrap_unchecked()
             .end()
