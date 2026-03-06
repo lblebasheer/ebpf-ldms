@@ -129,15 +129,6 @@ pub fn try_fslat_entry(ctx: FEntryContext, _filpop: &str) -> Result<u32, u32> {
     Ok(0)
 }
 
-fn find_null_pos(haystack: &[u8], maxlen: usize) -> usize {
-    for i in 0..maxlen {
-        if haystack[i] == 0 {
-            return i;
-        }
-    }
-    return maxlen;
-}
-
 pub fn starts_with(needle: &[u8], haystack: &[u8], len: usize) -> bool {
     if len == 0 || len > haystack.len() {
         return false;
