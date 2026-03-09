@@ -84,12 +84,6 @@ async fn main() -> anyhow::Result<()> {
     )))?;
     attach_probe_pair(&mut ebpf_writev, "vfs_writev_entry", "vfs_writev_exit", "vfs_writev", &btf)?;
 
-    let mut ebpf_splice = load_ebpf(aya::include_bytes_aligned!(concat!(
-        env!("OUT_DIR"),
-        "/nerscfslat-splice"
-    )))?;
-    attach_probe_pair(&mut ebpf_splice, "do_splice_from_entry", "do_splice_from_exit", "do_splice_from", &btf)?;
-
     let ctrl_c = signal::ctrl_c();
     println!("Waiting for Ctrl-C...");
     ctrl_c.await?;
