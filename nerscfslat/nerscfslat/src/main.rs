@@ -1,35 +1,14 @@
 use anyhow::Context as _;
 use aya::{
-    Btf,
+    Btf, Ebpf,
     programs::{FEntry, FExit},
 };
 #[rustfmt::skip]
 use log::{debug, warn};
 use tokio::signal;
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    env_logger::init();
-
-    // Bump the memlock rlimit. This is needed for older kernels that don't use the
-    // new memcg based accounting, see https://lwn.net/Articles/837122/
-    let rlim = libc::rlimit {
-        rlim_cur: libc::RLIM_INFINITY,
-        rlim_max: libc::RLIM_INFINITY,
-    };
-    let ret = unsafe { libc::setrlimit(libc::RLIMIT_MEMLOCK, &rlim) };
-    if ret != 0 {
-        debug!("remove limit on locked memory failed, ret is: {ret}");
-    }
-
-    // This will include your eBPF object file as raw bytes at compile-time and load it at
-    // runtime. This approach is recommended for most real-world use cases. If you would
-    // like to specify the eBPF program at runtime rather than at compile-time, you can
-    // reach for `Bpf::load_file` instead.
-    let mut ebpf = aya::Ebpf::load(aya::include_bytes_aligned!(concat!(
-        env!("OUT_DIR"),
-        "/nerscfslat-close"
-    )))?;
+fn load_ebpf(bytes: &[u8]) -> anyhow::Result<Ebpf> {
+    let mut ebpf = Ebpf::load(bytes)?;
     match aya_log::EbpfLogger::init(&mut ebpf) {
         Err(e) => {
             // This can happen if you remove all log statements from your eBPF program.
@@ -47,15 +26,57 @@ async fn main() -> anyhow::Result<()> {
             });
         }
     }
+    Ok(ebpf)
+}
+
+fn attach_fentry(ebpf: &mut Ebpf, prog_name: &str, kernel_fn: &str, btf: &Btf) -> anyhow::Result<()> {
+    let prog: &mut FEntry = ebpf.program_mut(prog_name).unwrap().try_into()?;
+    prog.load(kernel_fn, btf)?;
+    prog.attach()?;
+    Ok(())
+}
+
+fn attach_fexit(ebpf: &mut Ebpf, prog_name: &str, kernel_fn: &str, btf: &Btf) -> anyhow::Result<()> {
+    let prog: &mut FExit = ebpf.program_mut(prog_name).unwrap().try_into()?;
+    prog.load(kernel_fn, btf)?;
+    prog.attach()?;
+    Ok(())
+}
+
+fn attach_probe_pair(ebpf: &mut Ebpf, entry_name: &str, exit_name: &str, kernel_fn: &str, btf: &Btf) -> anyhow::Result<()> {
+    attach_fentry(ebpf, entry_name, kernel_fn, btf)?;
+    attach_fexit(ebpf, exit_name, kernel_fn, btf)?;
+    Ok(())
+}
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    env_logger::init();
+
+    // Bump the memlock rlimit. This is needed for older kernels that don't use the
+    // new memcg based accounting, see https://lwn.net/Articles/837122/
+    let rlim = libc::rlimit {
+        rlim_cur: libc::RLIM_INFINITY,
+        rlim_max: libc::RLIM_INFINITY,
+    };
+    let ret = unsafe { libc::setrlimit(libc::RLIMIT_MEMLOCK, &rlim) };
+    if ret != 0 {
+        debug!("remove limit on locked memory failed, ret is: {ret}");
+    }
+
     let btf = Btf::from_sys_fs().context("BTF from sysfs")?;
-    let program_filep_close_entry: &mut FEntry =
-        ebpf.program_mut("filp_close_entry").unwrap().try_into()?;
-    program_filep_close_entry.load("filp_close", &btf)?;
-    program_filep_close_entry.attach()?;
-    let program_filep_close_exit: &mut FExit =
-        ebpf.program_mut("filp_close_exit").unwrap().try_into()?;
-    program_filep_close_exit.load("filp_close", &btf)?;
-    program_filep_close_exit.attach()?;
+
+    let mut ebpf_close = load_ebpf(aya::include_bytes_aligned!(concat!(
+        env!("OUT_DIR"),
+        "/nerscfslat-close"
+    )))?;
+    attach_probe_pair(&mut ebpf_close, "filp_close_entry", "filp_close_exit", "filp_close", &btf)?;
+
+    let mut ebpf_fsync = load_ebpf(aya::include_bytes_aligned!(concat!(
+        env!("OUT_DIR"),
+        "/nerscfslat-fsync"
+    )))?;
+    attach_probe_pair(&mut ebpf_fsync, "vfs_fsync_range_entry", "vfs_fsync_range_exit", "vfs_fsync_range", &btf)?;
 
     let ctrl_c = signal::ctrl_c();
     println!("Waiting for Ctrl-C...");
