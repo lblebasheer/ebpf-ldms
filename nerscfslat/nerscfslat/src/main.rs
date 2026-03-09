@@ -84,6 +84,12 @@ async fn main() -> anyhow::Result<()> {
     )))?;
     attach_probe_pair(&mut ebpf_writev, "vfs_writev_entry", "vfs_writev_exit", "vfs_writev", &btf)?;
 
+    let mut ebpf_write = load_ebpf(aya::include_bytes_aligned!(concat!(
+        env!("OUT_DIR"),
+        "/nerscfslat-write"
+    )))?;
+    attach_probe_pair(&mut ebpf_write, "vfs_write_entry", "vfs_write_exit", "vfs_write", &btf)?;
+
     let ctrl_c = signal::ctrl_c();
     println!("Waiting for Ctrl-C...");
     ctrl_c.await?;

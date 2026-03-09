@@ -11,6 +11,7 @@ fn main() -> anyhow::Result<()> {
         "nerscfslat-ebpf-close",
         "nerscfslat-ebpf-fsync",
         "nerscfslat-ebpf-writev",
+        "nerscfslat-ebpf-write",
     ];
 
     let found: Vec<_> = ebpf_crate_names

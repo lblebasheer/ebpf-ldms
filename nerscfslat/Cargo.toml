@@ -6,6 +6,7 @@ members = [
     "nerscfslat-ebpf-close",
     "nerscfslat-ebpf-fsync",
     "nerscfslat-ebpf-writev",
+    "nerscfslat-ebpf-write",
 ]
 default-members = ["nerscfslat", "nerscfslat-common"]
 
@@ -52,6 +53,15 @@ debug = 2
 codegen-units = 1
 
 [profile.dev.package.nerscfslat-ebpf-writev]
+debug = "full"
+codegen-units = 1
+opt-level = 0
+
+[profile.release.package.nerscfslat-ebpf-write]
+debug = 2
+codegen-units = 1
+
+[profile.dev.package.nerscfslat-ebpf-write]
 debug = "full"
 codegen-units = 1
 opt-level = 0
