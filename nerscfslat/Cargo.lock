@@ -393,6 +393,42 @@ dependencies = [
 ]
 
 [[package]]
+name = "nerscfslat-ebpf-rename"
+version = "0.1.0"
+dependencies = [
+ "aya-ebpf",
+ "nerscfslat-common",
+ "which 6.0.3",
+]
+
+[[package]]
+name = "nerscfslat-ebpf-splice"
+version = "0.1.0"
+dependencies = [
+ "aya-ebpf",
+ "nerscfslat-common",
+ "which 6.0.3",
+]
+
+[[package]]
+name = "nerscfslat-ebpf-truncate"
+version = "0.1.0"
+dependencies = [
+ "aya-ebpf",
+ "nerscfslat-common",
+ "which 6.0.3",
+]
+
+[[package]]
+name = "nerscfslat-ebpf-writev"
+version = "0.1.0"
+dependencies = [
+ "aya-ebpf",
+ "nerscfslat-common",
+ "which 6.0.3",
+]
+
+[[package]]
 name = "num_enum"
 version = "0.7.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -78,6 +78,30 @@ async fn main() -> anyhow::Result<()> {
     )))?;
     attach_probe_pair(&mut ebpf_fsync, "vfs_fsync_range_entry", "vfs_fsync_range_exit", "vfs_fsync_range", &btf)?;
 
+    let mut ebpf_writev = load_ebpf(aya::include_bytes_aligned!(concat!(
+        env!("OUT_DIR"),
+        "/nerscfslat-writev"
+    )))?;
+    attach_probe_pair(&mut ebpf_writev, "vfs_writev_entry", "vfs_writev_exit", "vfs_writev", &btf)?;
+
+    let mut ebpf_splice = load_ebpf(aya::include_bytes_aligned!(concat!(
+        env!("OUT_DIR"),
+        "/nerscfslat-splice"
+    )))?;
+    attach_probe_pair(&mut ebpf_splice, "do_splice_from_entry", "do_splice_from_exit", "do_splice_from", &btf)?;
+
+    let mut ebpf_truncate = load_ebpf(aya::include_bytes_aligned!(concat!(
+        env!("OUT_DIR"),
+        "/nerscfslat-truncate"
+    )))?;
+    attach_probe_pair(&mut ebpf_truncate, "vfs_truncate_entry", "vfs_truncate_exit", "vfs_truncate", &btf)?;
+
+    let mut ebpf_rename = load_ebpf(aya::include_bytes_aligned!(concat!(
+        env!("OUT_DIR"),
+        "/nerscfslat-rename"
+    )))?;
+    attach_probe_pair(&mut ebpf_rename, "vfs_rename_entry", "vfs_rename_exit", "vfs_rename", &btf)?;
+
     let ctrl_c = signal::ctrl_c();
     println!("Waiting for Ctrl-C...");
     ctrl_c.await?;

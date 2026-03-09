@@ -1,0 +1,34 @@
+#![no_std]
+#![no_main]
+
+use aya_ebpf::{
+    macros::{fentry, fexit},
+    programs::{FEntryContext, FExitContext},
+};
+use nerscfslat_common::{try_fslat_entry, try_fslat_exit};
+
+#[fentry(function = "do_splice_from")]
+pub fn do_splice_from_entry(ctx: FEntryContext) -> u32 {
+    match try_fslat_entry(ctx, "do_splice_from") {
+        Ok(ret) => ret,
+        Err(ret) => ret,
+    }
+}
+
+#[fexit(function = "do_splice_from")]
+pub fn do_splice_from_exit(ctx: FExitContext) -> u32 {
+    match try_fslat_exit(ctx, "do_splice_from") {
+        Ok(ret) => ret,
+        Err(ret) => ret,
+    }
+}
+
+#[cfg(not(test))]
+#[panic_handler]
+fn panic(_info: &core::panic::PanicInfo) -> ! {
+    loop {}
+}
+
+#[unsafe(link_section = "license")]
+#[unsafe(no_mangle)]
+static LICENSE: [u8; 13] = *b"Dual MIT/GPL\0";

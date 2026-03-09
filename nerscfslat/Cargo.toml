@@ -5,6 +5,10 @@ members = [
     "nerscfslat-common",
     "nerscfslat-ebpf-close",
     "nerscfslat-ebpf-fsync",
+    "nerscfslat-ebpf-writev",
+    "nerscfslat-ebpf-splice",
+    "nerscfslat-ebpf-truncate",
+    "nerscfslat-ebpf-rename",
 ]
 default-members = ["nerscfslat", "nerscfslat-common"]
 
@@ -42,6 +46,42 @@ debug = 2
 codegen-units = 1
 
 [profile.dev.package.nerscfslat-ebpf-fsync]
+debug = "full"
+codegen-units = 1
+opt-level = 0
+
+[profile.release.package.nerscfslat-ebpf-writev]
+debug = 2
+codegen-units = 1
+
+[profile.dev.package.nerscfslat-ebpf-writev]
+debug = "full"
+codegen-units = 1
+opt-level = 0
+
+[profile.release.package.nerscfslat-ebpf-splice]
+debug = 2
+codegen-units = 1
+
+[profile.dev.package.nerscfslat-ebpf-splice]
+debug = "full"
+codegen-units = 1
+opt-level = 0
+
+[profile.release.package.nerscfslat-ebpf-truncate]
+debug = 2
+codegen-units = 1
+
+[profile.dev.package.nerscfslat-ebpf-truncate]
+debug = "full"
+codegen-units = 1
+opt-level = 0
+
+[profile.release.package.nerscfslat-ebpf-rename]
+debug = 2
+codegen-units = 1
+
+[profile.dev.package.nerscfslat-ebpf-rename]
 debug = "full"
 codegen-units = 1
 opt-level = 0

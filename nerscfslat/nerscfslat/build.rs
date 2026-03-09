@@ -6,48 +6,41 @@ fn main() -> anyhow::Result<()> {
         .no_deps()
         .exec()
         .context("MetadataCommand::exec")?;
-    let ebpf_package_0 = packages
-        .clone()
-        .into_iter()
-        .find(|cargo_metadata::Package { name, .. }| name.as_str() == "nerscfslat-ebpf-close")
-        .ok_or_else(|| anyhow!("nerscfslat-ebpf-close package not found"))?;
-    let cargo_metadata::Package {
-        name,
-        manifest_path,
-        ..
-    } = ebpf_package_0;
-    let ebpf_package_0 = aya_build::Package {
-        name: name.as_str(),
-        root_dir: manifest_path
-            .parent()
-            .ok_or_else(|| anyhow!("no parent for {manifest_path}"))?
-            .as_str(),
-        ..Default::default()
-    };
-    match aya_build::build_ebpf([ebpf_package_0], Toolchain::default()) {
-        Ok(_) => {}
-        Err(err) => return Err(err),
-    }
 
-    let ebpf_package_1 = packages
-        .into_iter()
-        .find(|cargo_metadata::Package { name, .. }| name.as_str() == "nerscfslat-ebpf-fsync")
-        .ok_or_else(|| anyhow!("nerscfslat-ebpf-fsync package not found"))?;
-    let cargo_metadata::Package {
-        name,
-        manifest_path,
-        ..
-    } = ebpf_package_1;
-    let ebpf_package_1 = aya_build::Package {
-        name: name.as_str(),
-        root_dir: manifest_path
-            .parent()
-            .ok_or_else(|| anyhow!("no parent for {manifest_path}"))?
-            .as_str(),
-        ..Default::default()
-    };
-    match aya_build::build_ebpf([ebpf_package_1], Toolchain::default()) {
-        Ok(_) => return Ok(()),
-        Err(err) => return Err(err),
-    }
+    let ebpf_crate_names = [
+        "nerscfslat-ebpf-close",
+        "nerscfslat-ebpf-fsync",
+        "nerscfslat-ebpf-writev",
+        "nerscfslat-ebpf-splice",
+        "nerscfslat-ebpf-truncate",
+        "nerscfslat-ebpf-rename",
+    ];
+
+    let found: Vec<_> = ebpf_crate_names
+        .iter()
+        .map(|crate_name| {
+            packages
+                .iter()
+                .find(|p| p.name.as_str() == *crate_name)
+                .ok_or_else(|| anyhow!("{crate_name} package not found"))
+        })
+        .collect::<anyhow::Result<_>>()?;
+
+    let ebpf_packages: Vec<_> = found
+        .iter()
+        .map(|p| -> anyhow::Result<aya_build::Package<'_>> {
+            Ok(aya_build::Package {
+                name: p.name.as_str(),
+                root_dir: p
+                    .manifest_path
+                    .parent()
+                    .ok_or_else(|| anyhow!("no parent for {}", p.manifest_path))?
+                    .as_str(),
+                ..Default::default()
+            })
+        })
+        .collect::<anyhow::Result<_>>()?;
+
+    aya_build::build_ebpf(ebpf_packages, Toolchain::default())?;
+    Ok(())
 }
