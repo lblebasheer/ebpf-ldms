@@ -393,25 +393,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "nerscfslat-ebpf-rename"
-version = "0.1.0"
-dependencies = [
- "aya-ebpf",
- "nerscfslat-common",
- "which 6.0.3",
-]
-
-[[package]]
-name = "nerscfslat-ebpf-splice"
-version = "0.1.0"
-dependencies = [
- "aya-ebpf",
- "nerscfslat-common",
- "which 6.0.3",
-]
-
-[[package]]
-name = "nerscfslat-ebpf-truncate"
+name = "nerscfslat-ebpf-write"
 version = "0.1.0"
 dependencies = [
  "aya-ebpf",

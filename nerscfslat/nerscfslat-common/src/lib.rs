@@ -104,9 +104,9 @@ struct PathWalkCtx<'a> {
     ctx: &'a FEntryContext,
 }
 
-pub fn try_fslat_entry(ctx: FEntryContext, _filpop: &str) -> Result<u32, u32> {
+pub fn try_fslat_entry(ctx: FEntryContext, _filpop: &str, file_arg_idx: usize) -> Result<u32, u32> {
     let now = unsafe { bpf_ktime_get_ns() };
-    let filp: *mut vmlinux::file = ctx.arg(0);
+    let filp: *mut vmlinux::file = ctx.arg(file_arg_idx);
     let pathptr = unsafe { &raw mut (*filp).f_path };
     let Some(pathbuf_ptr) = PATHBUF.get_ptr_mut(0) else {
         return Err(1);
@@ -345,8 +345,8 @@ extern "C" fn assemble_pathfrag(index: u32, ctx: *mut AssembleCtx) -> u64 {
     0
 }
 
-pub fn try_fslat_exit(ctx: FExitContext, filpop: &str) -> Result<u32, u32> {
-    let filp: *const vmlinux::file = ctx.arg(0);
+pub fn try_fslat_exit(ctx: FExitContext, filpop: &str, file_arg_idx: usize) -> Result<u32, u32> {
+    let filp: *const vmlinux::file = ctx.arg(file_arg_idx);
     let Some(countptr) = COUNTER.get_ptr_mut(0) else {
         return Err(1);
     };

@@ -9,7 +9,7 @@ use nerscfslat_common::{try_fslat_entry, try_fslat_exit};
 
 #[fentry(function = "filp_close")]
 pub fn filp_close_entry(ctx: FEntryContext) -> u32 {
-    match try_fslat_entry(ctx, "filp_close") {
+    match try_fslat_entry(ctx, "filp_close", 0) {
         Ok(ret) => ret,
         Err(ret) => ret,
     }
@@ -17,7 +17,7 @@ pub fn filp_close_entry(ctx: FEntryContext) -> u32 {
 
 #[fexit(function = "filp_close")]
 pub fn filp_close_exit(ctx: FExitContext) -> u32 {
-    match try_fslat_exit(ctx, "filp_close") {
+    match try_fslat_exit(ctx, "filp_close", 0) {
         Ok(ret) => ret,
         Err(ret) => ret,
     }

@@ -9,7 +9,7 @@ use nerscfslat_common::{try_fslat_entry, try_fslat_exit};
 
 #[fentry(function = "vfs_writev")]
 pub fn vfs_writev_entry(ctx: FEntryContext) -> u32 {
-    match try_fslat_entry(ctx, "vfs_writev") {
+    match try_fslat_entry(ctx, "vfs_writev", 0) {
         Ok(ret) => ret,
         Err(ret) => ret,
     }
@@ -17,7 +17,7 @@ pub fn vfs_writev_entry(ctx: FEntryContext) -> u32 {
 
 #[fexit(function = "vfs_writev")]
 pub fn vfs_writev_exit(ctx: FExitContext) -> u32 {
-    match try_fslat_exit(ctx, "vfs_writev") {
+    match try_fslat_exit(ctx, "vfs_writev", 0) {
         Ok(ret) => ret,
         Err(ret) => ret,
     }
