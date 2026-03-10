@@ -12,7 +12,8 @@ for mapid in $MAP_IDS; do
     key=0
     for prefix in $PREFIXES; do
         prefix_len=$(echo -n $prefix|wc -c)
-        len_field="$(printf %02d $prefix_len) 00 00 00"
+        # length of path in hex
+        len_field="$(printf %02x $prefix_len) 00 00 00"
         bpftool map update id $mapid key hex 0${key} 00 00 00 value hex $len_field $(echo -n $prefix|hexdump -e '/1 "%02x "') $(for k in $(seq 0 $((60-prefix_len-1)));do echo -n "00 ";done)
         key=$((key+1))
     done
