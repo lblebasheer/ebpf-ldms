@@ -7,8 +7,8 @@ PartOf = nersc-ebpf-streamer.service
 [Service]
 Type = simple
 Environment="PREFIXES=/proc /global/u1 /global/u2 /global/cfs /pscratch /mscratch /ascratch"
-ExecStart = /usr/local/sbin/nerscfslat_load_prefixes.sh
 ExecStart = /usr/sbin/nerscfslat
+ExecStartPost = /usr/local/sbin/nerscfslat_load_prefixes.sh
 
 [Install]
 WantedBy = nersc-ready.target
