@@ -1,0 +1,14 @@
+[Unit]
+Description = ebpf filesystem latency monitor
+Requires = nersc-ebpf-streamer.service
+After = nersc-ebpf-streamer.service
+PartOf = nersc-ebpf-streamer.service
+
+[Service]
+Type = simple
+Environment="PREFIXES=/proc /global/u1 /global/u2 /global/cfs /pscratch /mscratch /ascratch"
+ExecStart = /usr/local/sbin/nerscfslat_load_prefixes.sh
+ExecStart = /usr/sbin/nerscfslat
+
+[Install]
+WantedBy = nersc-ready.target

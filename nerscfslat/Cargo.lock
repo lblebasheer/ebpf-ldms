@@ -360,6 +360,8 @@ dependencies = [
  "nerscfslat-common",
  "nerscfslat-ebpf-close",
  "nerscfslat-ebpf-fsync",
+ "nerscfslat-ebpf-write",
+ "nerscfslat-ebpf-writev",
  "tokio",
 ]
 
