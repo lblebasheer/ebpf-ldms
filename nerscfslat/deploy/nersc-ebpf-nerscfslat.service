@@ -6,7 +6,7 @@ PartOf = nersc-ebpf-streamer.service
 
 [Service]
 Type = simple
-Environment="PREFIXES=/proc /global/u1 /global/u2 /global/cfs /pscratch /mscratch /ascratch"
+Environment="PREFIXES=/global/u1 /global/u2 /global/cfs /pscratch /mscratch /ascratch"
 Environment="NUM_PROBES=4"
 ExecStart = /usr/sbin/nerscfslat
 ExecStartPost=bash -c "until [[ $(bpftool map|grep WRITESTATS|wc -l) -eq $NUM_PROBES ]];do :;done"
