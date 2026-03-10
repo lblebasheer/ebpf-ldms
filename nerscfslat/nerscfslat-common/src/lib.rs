@@ -94,6 +94,7 @@ struct AssembleCtx<'a> {
     ctx: &'a FEntryContext,
 }
 
+#[repr(C)]
 struct PathWalkCtx<'a> {
     dentry: *mut vmlinux::dentry,
     mnt: *const vmlinux::mount,
