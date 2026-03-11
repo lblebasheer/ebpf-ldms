@@ -492,12 +492,6 @@ pub fn ringbuf_put(
             .unwrap_unchecked()
             .u64(monotonic)
             .unwrap_unchecked()
-            .str("metrics")
-            .unwrap_unchecked()
-            .begin_array()
-            .unwrap_unchecked()
-            .begin_map()
-            .unwrap_unchecked()
             .str("opname")
             .unwrap_unchecked()
             .str(filpop)
@@ -535,10 +529,6 @@ pub fn ringbuf_put(
             .str(core::str::from_utf8_unchecked(
                 path_prefix.split_at_unchecked(pathlen as usize).0,
             ))
-            .unwrap_unchecked()
-            .end()
-            .unwrap_unchecked()
-            .end()
             .unwrap_unchecked()
             .end()
             .unwrap_unchecked();
