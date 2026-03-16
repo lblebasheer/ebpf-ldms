@@ -160,33 +160,17 @@ pub fn partial_d_path(
     }
 
     // struct path { struct dentry *dentry }
-    let dentry = unsafe {
-        bpf_probe_read_kernel(&raw const (*path).dentry as *const *mut vmlinux::dentry)
-            .unwrap_unchecked()
-    };
+    let dentry = unsafe { (*path).dentry as *mut vmlinux::dentry };
     // struct path { struct vfsmount *mnt }
-    let vfsmount_ptr = unsafe {
-        bpf_probe_read_kernel(&raw const (*path).mnt as *const *const vmlinux::vfsmount)
-            .unwrap_unchecked()
-    };
+    let vfsmount_ptr = unsafe { (*path).mnt as *const vmlinux::vfsmount };
     // container_of(vfsmount_ptr, mount, mnt)
     // find the address of the struct mount that contains struct vfsmount at address vfsmount_ptr
     let mnt =
         unsafe { vfsmount_ptr.byte_sub(offset_of!(vmlinux::mount, mnt)) as *const vmlinux::mount };
 
     let current = unsafe { bpf_get_current_task_btf() as *const vmlinux::task_struct };
-    let root_vfsmount = unsafe {
-        bpf_probe_read_kernel(
-            &raw const (*(*current).fs).root.mnt as *const *const vmlinux::vfsmount,
-        )
-        .unwrap_unchecked()
-    };
-    let root_dentry = unsafe {
-        bpf_probe_read_kernel(
-            &raw const (*(*current).fs).root.dentry as *const *mut vmlinux::dentry,
-        )
-        .unwrap_unchecked()
-    };
+    let root_vfsmount = unsafe { (*(*current).fs).root.mnt as *const vmlinux::vfsmount };
+    let root_dentry = unsafe { (*(*current).fs).root.dentry as *mut vmlinux::dentry };
 
     let mut walk_ctx = PathWalkCtx {
         dentry,
