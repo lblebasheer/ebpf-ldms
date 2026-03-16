@@ -114,7 +114,7 @@ async fn ring_loop(
                 {
                     Ok(unixtime) => {
                         let mut ts: f64 = unixtime.as_secs() as f64;
-                        ts += (unixtime.subsec_micros() as f64) / 1_000_000_000_f64;
+                        ts += (unixtime.subsec_nanos() as f64) / 1_000_000_000_f64;
                         ts
                     }
                     Err(_) => {
