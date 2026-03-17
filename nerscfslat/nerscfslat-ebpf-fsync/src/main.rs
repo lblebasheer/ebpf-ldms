@@ -17,7 +17,7 @@ pub fn vfs_fsync_range_entry(ctx: FEntryContext) -> u32 {
 
 #[fexit(function = "vfs_fsync_range")]
 pub fn vfs_fsync_range_exit(ctx: FExitContext) -> u32 {
-    match try_fslat_exit(ctx, "vfs_fsync_range", 0) {
+    match try_fslat_exit(ctx, "vfs_fsync_range") {
         Ok(ret) => ret,
         Err(ret) => ret,
     }

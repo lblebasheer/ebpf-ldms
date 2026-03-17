@@ -5,8 +5,9 @@ use aya_ebpf::{
     bindings::bpf_dynptr,
     cty::{c_uchar, c_void},
     helpers::{
-        bpf_dynptr_from_mem, bpf_dynptr_write, bpf_get_current_task_btf, bpf_ktime_get_ns,
-        bpf_loop, bpf_map_update_elem, bpf_probe_read_kernel, bpf_probe_read_kernel_str_bytes,
+        bpf_dynptr_from_mem, bpf_dynptr_write, bpf_get_current_pid_tgid, bpf_get_current_task_btf,
+        bpf_ktime_get_ns, bpf_loop, bpf_map_update_elem, bpf_probe_read_kernel,
+        bpf_probe_read_kernel_str_bytes,
     },
     macros::map,
     maps::{Array, HashMap, PerCpuArray, RingBuf},
@@ -37,7 +38,7 @@ pub static PATHBUF: PerCpuArray<PathSlice> = PerCpuArray::with_max_entries(1, 0)
 pub static PATHBUFTMP: PerCpuArray<PathComponent> = PerCpuArray::with_max_entries(NUM_COMP, 0);
 
 #[map]
-pub static PTRLIST: HashMap<usize, EntryRec> = HashMap::with_max_entries(1024, 0);
+pub static PTRLIST: HashMap<u64, EntryRec> = HashMap::with_max_entries(8192, 0);
 
 #[map]
 pub static LDMS_SHARED_STREAM: RingBuf = RingBuf::pinned(8192, 0);
@@ -121,7 +122,7 @@ pub fn try_fslat_entry(ctx: FEntryContext, _filpop: &str, file_arg_idx: usize) -
             timestamp: now,
             path: unsafe { *pathbuf_ptr },
         };
-        let _ = PTRLIST.insert(&(filp as usize), &entryrec, 0u64);
+        let _ = PTRLIST.insert(&bpf_get_current_pid_tgid(), &entryrec, 0u64);
     }
     ret = ret.clamp(0, PATHFRAGLEN as i32);
     debug!(ctx, "assemComp {}", unsafe {
@@ -330,13 +331,13 @@ extern "C" fn assemble_pathfrag(index: u32, ctx: *mut AssembleCtx) -> u64 {
     0
 }
 
-pub fn try_fslat_exit(ctx: FExitContext, filpop: &str, file_arg_idx: usize) -> Result<u32, u32> {
-    let filp: *const vmlinux::file = ctx.arg(file_arg_idx);
+pub fn try_fslat_exit(ctx: FExitContext, filpop: &str) -> Result<u32, u32> {
     let Some(countptr) = COUNTER.get_ptr_mut(0) else {
         return Err(1);
     };
+    let pid_tgid = bpf_get_current_pid_tgid();
 
-    match unsafe { PTRLIST.get(filp as usize) } {
+    match unsafe { PTRLIST.get(pid_tgid) } {
         Some(entryrec) => {
             let now = unsafe { bpf_ktime_get_ns() };
             let delta = now - entryrec.timestamp;
@@ -345,7 +346,13 @@ pub fn try_fslat_exit(ctx: FExitContext, filpop: &str, file_arg_idx: usize) -> R
                 let Some(fsstat) = (unsafe { WRITESTATS.get_ptr_mut(idx) }) else {
                     return Err(1);
                 };
-                if unsafe { starts_with(&(*fsstat).path_prefix, &entryrec.path, (*fsstat).pathlen as usize) } {
+                if unsafe {
+                    starts_with(
+                        &(*fsstat).path_prefix,
+                        &entryrec.path,
+                        (*fsstat).pathlen as usize,
+                    )
+                } {
                     if now - unsafe { (*fsstat).lastpublish } > AGG_INTERVAL {
                         let eventf = EventFields {
                             id: "fslat",
@@ -378,7 +385,7 @@ pub fn try_fslat_exit(ctx: FExitContext, filpop: &str, file_arg_idx: usize) -> R
                     }
                 }
             }
-            let _ = PTRLIST.remove(&(filp as usize));
+            let _ = PTRLIST.remove(&(pid_tgid));
         }
         None => {}
     };
