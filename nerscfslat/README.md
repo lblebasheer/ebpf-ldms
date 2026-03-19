@@ -67,7 +67,7 @@ Prefixes are loaded at startup via `bpftool` using the
 ### Aggregation and the Ring Buffer
 
 Within each 500 ms aggregation window, per-prefix statistics are accumulated
-in a BPF array map (`WRITESTATS`) entirely in the kernel:
+in a BPF array map (`FSLATENCYSTATS`) entirely in the kernel:
 
 - **min latency** (ns)
 - **max latency** (ns)
@@ -123,7 +123,7 @@ PREFIXES=/global/u1 /global/u2 /global/cfs /pscratch /mscratch /ascratch
 
 After `nerscfslat` starts and its eBPF maps are loaded, the
 `nerscfslat_load_prefixes.sh` script uses `bpftool` to write the prefix list
-into the `WRITESTATS` BPF array map of each active probe. Up to **8 prefixes**
+into the `FSLATENCYSTATS` BPF array map of each active probe. Up to **8 prefixes**
 are supported; each prefix must be at most **16 characters** long.
 
 ## Deployment

@@ -29,7 +29,7 @@ const MAX_PARENT_LOOP: u32 = 64;
 pub static COUNTER: Array<u64> = Array::with_max_entries(1, 0);
 
 #[map]
-pub static mut WRITESTATS: Array<FsWriteStats> = Array::with_max_entries(NUM_PATH_PREFIX, 0);
+pub static mut FSLATENCYSTATS: Array<FsLatencyStats> = Array::with_max_entries(NUM_PATH_PREFIX, 0);
 
 #[map]
 pub static PATHBUF: PerCpuArray<PathSlice> = PerCpuArray::with_max_entries(1, 0);
@@ -345,7 +345,7 @@ pub fn try_fslat_exit(ctx: FExitContext, filpop: &str) -> Result<u32, u32> {
             let delta = now - entryrec.timestamp;
             for idx in 0..NUM_PATH_PREFIX {
                 #[allow(static_mut_refs)]
-                let Some(fsstat) = (unsafe { WRITESTATS.get_ptr_mut(idx) }) else {
+                let Some(fsstat) = (unsafe { FSLATENCYSTATS.get_ptr_mut(idx) }) else {
                     return Err(1);
                 };
                 if unsafe {
@@ -395,14 +395,14 @@ pub fn try_fslat_exit(ctx: FExitContext, filpop: &str) -> Result<u32, u32> {
 }
 
 pub fn update_stats(
-    _ctx: &FExitContext,
     idx: u32,
-    fsstat: *mut FsWriteStats,
+    fsstat: *mut FsLatencyStats,
     latency: u64,
+    bytes: u64,
 ) -> Result<u32, u32> {
     unsafe {
         #[allow(static_mut_refs)]
-        let mut ws: FsWriteStats = *fsstat;
+        let mut ws: FsLatencyStats = *fsstat;
         if latency < ws.min {
             ws.min = latency;
         }
@@ -414,7 +414,7 @@ pub fn update_stats(
 
         #[allow(static_mut_refs)]
         bpf_map_update_elem(
-            &raw mut WRITESTATS as *mut c_void,
+            &raw mut FSLATENCYSTATS as *mut c_void,
             &raw const idx as *const c_void,
             &raw const ws as *const c_void,
             0u64,
@@ -426,12 +426,12 @@ pub fn update_stats(
 pub fn clear_stats(
     _ctx: &FExitContext,
     idx: u32,
-    fsstat: *mut FsWriteStats,
+    fsstat: *mut FsLatencyStats,
     now: u64,
 ) -> Result<u32, u32> {
     unsafe {
         #[allow(static_mut_refs)]
-        let mut ws: FsWriteStats = *fsstat;
+        let mut ws: FsLatencyStats = *fsstat;
         ws.lastpublish = now;
         ws.count = 0;
         ws.total = 0;
@@ -439,7 +439,7 @@ pub fn clear_stats(
         ws.max = u64::MIN;
         #[allow(static_mut_refs)]
         bpf_map_update_elem(
-            &raw mut WRITESTATS as *mut c_void,
+            &raw mut FSLATENCYSTATS as *mut c_void,
             &raw const idx as *const c_void,
             &raw const ws as *const c_void,
             0u64,
@@ -450,7 +450,7 @@ pub fn clear_stats(
 
 pub fn ringbuf_put(
     eventf: &EventFields,
-    fsstat: *mut FsWriteStats,
+    fsstat: *mut FsLatencyStats,
     filpop: &str,
     unit: &str,
 ) -> Result<u32, u32> {
