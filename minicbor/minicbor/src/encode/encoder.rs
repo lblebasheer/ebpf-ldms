@@ -115,6 +115,13 @@ impl<W: Write> Encoder<W> {
         }
     }
 
+    /// Encode a `u64` value using non-canonical maximum width encoding
+    /// This is to remove all the conditionals that explode the ebpf verfier state space
+#[inline(always)]
+    pub fn u64_noncanonical(&mut self, x: u64) -> Result<&mut Self, Error<W::Error>> {
+        self.put(&[27])?.put(&x.to_be_bytes()[..])
+    }
+
     /// Encode an `i64` value.
     pub fn i64(&mut self, x: i64) -> Result<&mut Self, Error<W::Error>> {
         if x >= 0 {
@@ -230,6 +237,11 @@ impl<W: Write> Encoder<W> {
         self.type_len(TEXT, x.len() as u64)?.put(x.as_bytes())
     }
 
+    /// Encode a string slice.
+    pub fn str_noncanonical(&mut self, x: &str) -> Result<&mut Self, Error<W::Error>> {
+        self.type_len_noncanonical(TEXT, x.len() as u64)?.put(x.as_bytes())
+    }
+
     /// Begin encoding a string of `len` bytes.
     ///
     /// In contrast to [`Encoder::str`] which also encodes a string, this
@@ -313,6 +325,11 @@ impl<W: Write> Encoder<W> {
             0x1_0000 ..= 0xffff_ffff => self.put(&[t | 26])?.put(&(x as u32).to_be_bytes()),
             _                        => self.put(&[t | 27])?.put(&x.to_be_bytes()[..])
         }
+    }
+
+    /// Write type and length information.
+    fn type_len_noncanonical(&mut self, t: u8, x: u64) -> Result<&mut Self, Error<W::Error>> {
+        self.put(&[t | 27])?.put(&x.to_be_bytes()[..])
     }
 }
 

@@ -16,7 +16,7 @@ use aya_ebpf::{
 use aya_log_ebpf::{debug, error};
 use minicbor::Encoder;
 
-const PATHFRAGLEN: usize = 16;
+const PATHFRAGLEN: usize = 32;
 const PATHCOMPLEN: usize = PATHFRAGLEN;
 const NUM_PATH_PREFIX: u32 = 8;
 const AGG_INTERVAL: u64 = 1000 * 1000 * 500; // 500ms
@@ -126,7 +126,7 @@ pub fn try_fslat_entry(ctx: FEntryContext, _filpop: &str, file_arg_idx: usize) -
         let _ = PTRLIST.insert(&(ctx.pid(), ctx.tgid()), &entryrec, 0u64);
     }
     ret = ret.clamp(0, PATHFRAGLEN as i32);
-    debug!(ctx, "assemComp {}", unsafe {
+    debug!(ctx, "partial_path: {}", unsafe {
         core::str::from_utf8_unchecked(&(*pathbuf_ptr).get_unchecked(..ret as usize))
     });
     Ok(0)
@@ -281,7 +281,6 @@ extern "C" fn path_walk_step(_index: u32, ctx: *mut PathWalkCtx) -> u64 {
         (*ctx).start = (pathidx % NUM_COMP) as u32;
         (*ctx).pathidx += 1;
         (*ctx).dentry = parent;
-        debug!((*ctx).ctx, "path: {}", core::str::from_utf8_unchecked(name));
     }
     0
 }
@@ -469,60 +468,62 @@ pub fn ringbuf_put(
     } = *eventf;
     let dataent_bytes: *mut [u8] = dataent.as_mut_ptr();
     let mut encoder = unsafe { Encoder::new(&mut *dataent_bytes) };
-    let pathlen = unsafe { (*fsstat).pathlen.clamp(0, PATHFRAGLEN as u32) };
+    let pathlen = unsafe { (*fsstat).pathlen as usize };
+    if !aya_ebpf::check_bounds_signed(pathlen as i64, 1i64, PATHFRAGLEN as i64) {
+        dataent.discard(0u64);
+        return Err(1);
+    }
     unsafe {
         encoder
             .begin_map()
             .unwrap_unchecked()
-            .str("id")
+            .str_noncanonical("id")
             .unwrap_unchecked()
-            .str(id)
+            .str_noncanonical(id)
             .unwrap_unchecked()
-            .str("version")
+            .str_noncanonical("version")
             .unwrap_unchecked()
-            .str(version)
+            .str_noncanonical(version)
             .unwrap_unchecked()
-            .str("timestamp_monotonic")
+            .str_noncanonical("timestamp_monotonic")
             .unwrap_unchecked()
-            .u64(monotonic)
+            .u64_noncanonical(monotonic)
             .unwrap_unchecked()
-            .str("opname")
+            .str_noncanonical("opname")
             .unwrap_unchecked()
-            .str(filpop)
+            .str_noncanonical(filpop)
             .unwrap_unchecked()
-            .str("sequence")
+            .str_noncanonical("sequence")
             .unwrap_unchecked()
-            .u64(seq)
+            .u64_noncanonical(seq)
             .unwrap_unchecked()
-            .str("min_latency")
+            .str_noncanonical("min_latency")
             .unwrap_unchecked()
-            .u64((*fsstat).min)
+            .u64_noncanonical((*fsstat).min)
             .unwrap_unchecked()
-            .str("max_latency")
+            .str_noncanonical("max_latency")
             .unwrap_unchecked()
-            .u64((*fsstat).max)
+            .u64_noncanonical((*fsstat).max)
             .unwrap_unchecked()
-            .str("total_latency")
+            .str_noncanonical("total_latency")
             .unwrap_unchecked()
-            .u64((*fsstat).total)
+            .u64_noncanonical((*fsstat).total)
             .unwrap_unchecked()
-            .str("count_samples")
+            .str_noncanonical("count_samples")
             .unwrap_unchecked()
-            .u64((*fsstat).count)
+            .u64_noncanonical((*fsstat).count)
             .unwrap_unchecked()
-            .str("interval")
+            .str_noncanonical("interval")
             .unwrap_unchecked()
-            .u64(AGG_INTERVAL)
+            .u64_noncanonical(AGG_INTERVAL)
             .unwrap_unchecked()
-            .str("unit")
+            .str_noncanonical("unit")
             .unwrap_unchecked()
-            .str(unit)
+            .str_noncanonical(unit)
             .unwrap_unchecked()
-            .str("path_prefix")
+            .str_noncanonical("path_prefix")
             .unwrap_unchecked()
-            .str(core::str::from_utf8_unchecked(
-                path_prefix.split_at_unchecked(pathlen as usize).0,
-            ))
+            .str_noncanonical(core::str::from_utf8_unchecked(path_prefix.get_unchecked(..pathlen)))
             .unwrap_unchecked()
             .end()
             .unwrap_unchecked();
