@@ -17,7 +17,8 @@ pub fn vfs_writev_entry(ctx: FEntryContext) -> u32 {
 
 #[fexit(function = "vfs_writev")]
 pub fn vfs_writev_exit(ctx: FExitContext) -> u32 {
-    match try_fslat_exit(ctx, "vfs_writev") {
+    let ret = ctx.arg(5);
+    match try_fslat_exit(ctx, "vfs_writev", ret) {
         Ok(ret) => ret,
         Err(ret) => ret,
     }

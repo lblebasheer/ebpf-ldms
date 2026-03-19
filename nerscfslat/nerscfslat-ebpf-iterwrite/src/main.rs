@@ -17,7 +17,8 @@ pub fn vfs_iter_write_entry(ctx: FEntryContext) -> u32 {
 
 #[fexit(function = "vfs_iter_write")]
 pub fn vfs_iter_write_exit(ctx: FExitContext) -> u32 {
-    match try_fslat_exit(ctx, "vfs_iter_write") {
+    let ret = ctx.arg(4);
+    match try_fslat_exit(ctx, "vfs_iter_write", ret) {
         Ok(ret) => ret,
         Err(ret) => ret,
     }

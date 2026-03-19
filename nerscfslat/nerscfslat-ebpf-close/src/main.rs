@@ -17,7 +17,8 @@ pub fn filp_close_entry(ctx: FEntryContext) -> u32 {
 
 #[fexit(function = "filp_close")]
 pub fn filp_close_exit(ctx: FExitContext) -> u32 {
-    match try_fslat_exit(ctx, "filp_close") {
+    let ret = ctx.arg(2);
+    match try_fslat_exit(ctx, "filp_close", ret) {
         Ok(ret) => ret,
         Err(ret) => ret,
     }

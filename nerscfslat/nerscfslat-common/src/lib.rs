@@ -19,7 +19,7 @@ use minicbor::Encoder;
 const PATHFRAGLEN: usize = 32;
 const PATHCOMPLEN: usize = PATHFRAGLEN;
 const NUM_PATH_PREFIX: u32 = 8;
-const AGG_INTERVAL: u64 = 1000 * 1000 * 500; // 500ms
+const AGG_INTERVAL: u64 = 1000 * 1000 * 1000; // 1s
 const BUFSIZE: usize = 1024;
 const NUM_COMP: u32 = 3;
 const MAX_PARENT: u32 = 32;
@@ -62,12 +62,13 @@ pub struct PathComponent {
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct FsWriteStats {
+pub struct FsLatencyStats {
     pub pathlen: u32,
     pub path_prefix: PathSlice,
     pub min: u64,
     pub max: u64,
-    pub total: u64,
+    pub total_lat: u64,
+    pub total_bytes: u64,
     pub count: u64,
     pub lastpublish: u64,
 }
@@ -333,7 +334,7 @@ extern "C" fn assemble_pathfrag(index: u32, ctx: *mut AssembleCtx) -> u64 {
     0
 }
 
-pub fn try_fslat_exit(ctx: FExitContext, filpop: &str) -> Result<u32, u32> {
+pub fn try_fslat_exit(ctx: FExitContext, filpop: &str, ret: u64) -> Result<u32, u32> {
     let Some(countptr) = COUNTER.get_ptr_mut(0) else {
         return Err(1);
     };
@@ -364,7 +365,7 @@ pub fn try_fslat_exit(ctx: FExitContext, filpop: &str) -> Result<u32, u32> {
                             path_prefix: unsafe { &(*fsstat).path_prefix },
                         };
 
-                        let Ok(_) = update_stats(&ctx, idx, fsstat, delta) else {
+                        let Ok(_) = update_stats(idx, fsstat, delta, ret) else {
                             error!(ctx, "update_stats() failed");
                             return Err(1);
                         };
@@ -380,7 +381,7 @@ pub fn try_fslat_exit(ctx: FExitContext, filpop: &str) -> Result<u32, u32> {
                             *countptr += 1;
                         }
                     } else {
-                        let Ok(_) = update_stats(&ctx, idx, fsstat, delta) else {
+                        let Ok(_) = update_stats(idx, fsstat, delta, ret) else {
                             error!(ctx, "update_stats() failed");
                             return Err(1);
                         };
@@ -410,7 +411,8 @@ pub fn update_stats(
             ws.max = latency;
         }
         ws.count += 1;
-        ws.total += latency;
+        ws.total_lat += latency;
+        ws.total_bytes += bytes;
 
         #[allow(static_mut_refs)]
         bpf_map_update_elem(
@@ -434,7 +436,8 @@ pub fn clear_stats(
         let mut ws: FsLatencyStats = *fsstat;
         ws.lastpublish = now;
         ws.count = 0;
-        ws.total = 0;
+        ws.total_lat = 0;
+        ws.total_bytes = 0;
         ws.min = u64::MAX;
         ws.max = u64::MIN;
         #[allow(static_mut_refs)]
@@ -507,7 +510,11 @@ pub fn ringbuf_put(
             .unwrap_unchecked()
             .str_noncanonical("total_latency")
             .unwrap_unchecked()
-            .u64_noncanonical((*fsstat).total)
+            .u64_noncanonical((*fsstat).total_lat)
+            .unwrap_unchecked()
+            .str_noncanonical("total_bytes")
+            .unwrap_unchecked()
+            .u64_noncanonical((*fsstat).total_bytes)
             .unwrap_unchecked()
             .str_noncanonical("count_samples")
             .unwrap_unchecked()

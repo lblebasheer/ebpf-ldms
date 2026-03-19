@@ -17,7 +17,8 @@ pub fn vfs_readv_entry(ctx: FEntryContext) -> u32 {
 
 #[fexit(function = "vfs_readv")]
 pub fn vfs_readv_exit(ctx: FExitContext) -> u32 {
-    match try_fslat_exit(ctx, "vfs_readv") {
+    let ret = ctx.arg(5);
+    match try_fslat_exit(ctx, "vfs_readv", ret) {
         Ok(ret) => ret,
         Err(ret) => ret,
     }
