@@ -130,6 +130,54 @@ async fn main() -> anyhow::Result<()> {
         &btf,
     )?;
 
+    let mut ebpf_read = load_ebpf(aya::include_bytes_aligned!(concat!(
+        env!("OUT_DIR"),
+        "/nerscfslat-read"
+    )))?;
+    attach_probe_pair(
+        &mut ebpf_read,
+        "vfs_read_entry",
+        "vfs_read_exit",
+        "vfs_read",
+        &btf,
+    )?;
+
+    let mut ebpf_readv = load_ebpf(aya::include_bytes_aligned!(concat!(
+        env!("OUT_DIR"),
+        "/nerscfslat-readv"
+    )))?;
+    attach_probe_pair(
+        &mut ebpf_readv,
+        "vfs_readv_entry",
+        "vfs_readv_exit",
+        "vfs_readv",
+        &btf,
+    )?;
+
+    let mut ebpf_iterread = load_ebpf(aya::include_bytes_aligned!(concat!(
+        env!("OUT_DIR"),
+        "/nerscfslat-iterread"
+    )))?;
+    attach_probe_pair(
+        &mut ebpf_iterread,
+        "vfs_iter_read_entry",
+        "vfs_iter_read_exit",
+        "vfs_iter_read",
+        &btf,
+    )?;
+
+    let mut ebpf_iterwrite = load_ebpf(aya::include_bytes_aligned!(concat!(
+        env!("OUT_DIR"),
+        "/nerscfslat-iterwrite"
+    )))?;
+    attach_probe_pair(
+        &mut ebpf_iterwrite,
+        "vfs_iter_write_entry",
+        "vfs_iter_write_exit",
+        "vfs_iter_write",
+        &btf,
+    )?;
+
     let ctrl_c = signal::ctrl_c();
     println!("Waiting for Ctrl-C...");
     ctrl_c.await?;

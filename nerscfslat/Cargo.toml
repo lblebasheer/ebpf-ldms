@@ -5,6 +5,10 @@ members = [
     "nerscfslat-common",
     "nerscfslat-ebpf-close",
     "nerscfslat-ebpf-fsync",
+    "nerscfslat-ebpf-iterread",
+    "nerscfslat-ebpf-iterwrite",
+    "nerscfslat-ebpf-read",
+    "nerscfslat-ebpf-readv",
     "nerscfslat-ebpf-writev",
     "nerscfslat-ebpf-write",
 ]
@@ -28,6 +32,42 @@ libc = { version = "0.2.159", default-features = false }
 log = { version = "0.4.22", default-features = false }
 tokio = { version = "1.40.0", default-features = false }
 which = { version = "6.0.0", default-features = false }
+
+[profile.release.package.nerscfslat-ebpf-iterread]
+debug = 2
+codegen-units = 1
+
+[profile.dev.package.nerscfslat-ebpf-iterread]
+debug = "full"
+codegen-units = 1
+opt-level = 0
+
+[profile.release.package.nerscfslat-ebpf-iterwrite]
+debug = 2
+codegen-units = 1
+
+[profile.dev.package.nerscfslat-ebpf-iterwrite]
+debug = "full"
+codegen-units = 1
+opt-level = 0
+
+[profile.release.package.nerscfslat-ebpf-read]
+debug = 2
+codegen-units = 1
+
+[profile.dev.package.nerscfslat-ebpf-read]
+debug = "full"
+codegen-units = 1
+opt-level = 0
+
+[profile.release.package.nerscfslat-ebpf-readv]
+debug = 2
+codegen-units = 1
+
+[profile.dev.package.nerscfslat-ebpf-readv]
+debug = "full"
+codegen-units = 1
+opt-level = 0
 
 [profile.release.package.nerscfslat-ebpf-close]
 debug = 2

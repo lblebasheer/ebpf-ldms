@@ -10,6 +10,10 @@ fn main() -> anyhow::Result<()> {
     let ebpf_crate_names = [
         "nerscfslat-ebpf-close",
         "nerscfslat-ebpf-fsync",
+        "nerscfslat-ebpf-iterread",
+        "nerscfslat-ebpf-iterwrite",
+        "nerscfslat-ebpf-read",
+        "nerscfslat-ebpf-readv",
         "nerscfslat-ebpf-writev",
         "nerscfslat-ebpf-write",
     ];

@@ -347,7 +347,7 @@ dependencies = [
 
 [[package]]
 name = "nerscfslat"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "aya",
@@ -387,6 +387,42 @@ dependencies = [
 
 [[package]]
 name = "nerscfslat-ebpf-fsync"
+version = "0.1.0"
+dependencies = [
+ "aya-ebpf",
+ "nerscfslat-common",
+ "which 6.0.3",
+]
+
+[[package]]
+name = "nerscfslat-ebpf-iterread"
+version = "0.1.0"
+dependencies = [
+ "aya-ebpf",
+ "nerscfslat-common",
+ "which 6.0.3",
+]
+
+[[package]]
+name = "nerscfslat-ebpf-iterwrite"
+version = "0.1.0"
+dependencies = [
+ "aya-ebpf",
+ "nerscfslat-common",
+ "which 6.0.3",
+]
+
+[[package]]
+name = "nerscfslat-ebpf-read"
+version = "0.1.0"
+dependencies = [
+ "aya-ebpf",
+ "nerscfslat-common",
+ "which 6.0.3",
+]
+
+[[package]]
+name = "nerscfslat-ebpf-readv"
 version = "0.1.0"
 dependencies = [
  "aya-ebpf",
