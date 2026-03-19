@@ -1,6 +1,6 @@
-#!/bin/bash -ex
+#!/bin/bash -e
 
-MAP_IDS=$(bpftool map show --json|jq '.[]|select(.name == "WRITESTATS")|.id')
+MAP_IDS=$(bpftool map show --json|jq '.[]|select(.name == "FSLATENCYSTATS")|.id')
 NUM_MAPS=$(echo -n $MAP_IDS|wc -w)
 NUM_PREFIX=$(($(echo -n $PREFIXES|wc -w) - 1))
 if [[ $NUM_PREFIX -gt 8 ]]; then
@@ -10,11 +10,14 @@ fi
 
 for mapid in $MAP_IDS; do
     key=0
+    value_bytes=$(bpftool map show id $mapid --json|jq .bytes_value)
     for prefix in $PREFIXES; do
         prefix_len=$(echo -n $prefix|wc -c)
         # length of path in hex
         len_field="$(printf %02x $prefix_len) 00 00 00"
-        bpftool map update id $mapid key hex 0${key} 00 00 00 value hex $len_field $(echo -n $prefix|hexdump -e '/1 "%02x "') $(for k in $(seq 0 $((76-prefix_len-1)));do echo -n "00 ";done)
+	len_field_len=$(echo $len_field|wc -w)
+	# -1 because seq is inclusive in the range
+        bpftool map update id $mapid key hex 0${key} 00 00 00 value hex $len_field $(echo -n $prefix|hexdump -e '/1 "%02x "') $(for k in $(seq 0 $((${value_bytes} - ${prefix_len} - ${len_field_len} - 1)));do echo -n "00 ";done)
         key=$((key+1))
     done
 done
