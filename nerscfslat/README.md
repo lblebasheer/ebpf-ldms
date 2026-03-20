@@ -2,7 +2,7 @@
 
 An eBPF-based filesystem latency monitor for Linux, built with the
 [Aya](https://aya-rs.dev/) Rust framework. It instruments VFS kernel functions
-to measure the latency of write-path filesystem operations, aggregates the
+to measure the latency of read/write-path filesystem operations, aggregates the
 results per filesystem path prefix, and publishes them into a shared BPF ring
 buffer for downstream consumption by the
 [nersc-ebpf-streamer](https://gitlab.nersc.gov/ebasheer/ebpf-ldms-streamer)
@@ -20,8 +20,7 @@ measurements of that latency from the perspective of user processes.
 
 `nerscfslat` was created to fill that gap. It runs as a system daemon on NERSC
 nodes, using eBPF to observe actual VFS call latencies with nanosecond
-precision, broken down by filesystem — without modifying any application code
-and with negligible overhead.
+precision, broken down by filesystem — without modifying any application code.
 
 ## How It Works
 
@@ -33,12 +32,16 @@ Four kernel functions are instrumented using `fentry`/`fexit` tracepoints:
 |--------------------|-------------------------------|
 | `vfs_write`        | Single-buffer write           |
 | `vfs_writev`       | Vectored (scatter-gather) write |
+| `vfs_iter_write    | Vectored (scatter-gather) write |
+| `vfs_read`        | Single-buffer read           |
+| `vfs_readv`       | Vectored (scatter-gather) read |
+| `vfs_iter_read    | Vectored (scatter-gather) read |
 | `vfs_fsync_range`  | fsync / data flush            |
 | `filp_close`       | File close                    |
 
 On `fentry`, the current kernel timestamp and the first few path components of
 the file being operated on are captured and stored in a per-CPU hash map keyed
-by the file pointer.
+by the pid/thread-id of the process in whose context the operation is being executed.
 
 On `fexit`, the elapsed time is calculated and matched against the configured
 path prefix table. If the file's path starts with one of the configured
@@ -46,10 +49,10 @@ prefixes, the latency sample is added to the running statistics for that prefix.
 
 ### Path Prefix Filtering
 
-Up to **8 path prefixes** (each up to **16 characters**) can be configured.
+Up to **8 path prefixes** (each up to **32 characters**) can be configured.
 Latency statistics are tracked independently for each prefix, so every
 configured filesystem gets its own set of metrics. At NERSC, all external
-shared filesystems can be uniquely identified within the 16-character prefix
+shared filesystems can be uniquely identified within the 32-character prefix
 limit:
 
 | Prefix        | Filesystem                              |
@@ -66,37 +69,43 @@ Prefixes are loaded at startup via `bpftool` using the
 
 ### Aggregation and the Ring Buffer
 
-Within each 500 ms aggregation window, per-prefix statistics are accumulated
+Within each 1s aggregation window, per-prefix statistics are accumulated
 in a BPF array map (`FSLATENCYSTATS`) entirely in the kernel:
 
 - **min latency** (ns)
 - **max latency** (ns)
 - **total latency** (ns)
+- **total bytes** (bytes)
 - **sample count**
 
 At the end of each window, a summary record is serialized as a
 **CBOR-encoded map** and written into a **pinned BPF ring buffer** named
 `LDMS_SHARED_STREAM`. The ring buffer is pinned in the BPF filesystem, making
-it accessible to other user-space processes on the same node.
+it accessible to ebpf_streamer daemon.
 
 ### Message Format
 
-Each record written to the ring buffer is a CBOR map with the following fields:
+Each record written to the ring buffer is a CBOR map. Example:
 
-| Field                 | Type   | Description                                      |
-|-----------------------|--------|--------------------------------------------------|
-| `id`                  | string | Always `"fslat"`                                 |
-| `version`             | string | Schema version, currently `"v1"`                 |
-| `timestamp_monotonic` | u64    | Kernel monotonic timestamp at publish time (ns)  |
-| `opname`              | string | Kernel function name (e.g. `"vfs_write"`)        |
-| `sequence`            | u64    | Monotonically increasing sequence number         |
-| `min_latency`         | u64    | Minimum observed latency in the window (ns)      |
-| `max_latency`         | u64    | Maximum observed latency in the window (ns)      |
-| `total_latency`       | u64    | Sum of all latencies in the window (ns)          |
-| `count_samples`       | u64    | Number of operations observed in the window      |
-| `interval`            | u64    | Aggregation window length (ns); nominally 500 ms |
-| `unit`                | string | Always `"ns"`                                    |
-| `path_prefix`         | string | The matched path prefix                          |
+```json
+{
+  "hostname": "opensuse15",
+  "id": "fslat/v2",
+  "metrics": {
+    "count_samples": 32,
+    "max_latency": 468941,
+    "min_latency": 235853,
+    "total_bytes": 4568,
+    "total_latency": 11649610
+  },
+  "opname": "vfs_read",
+  "path_prefix": "/vagrant",
+  "sequence": 20,
+  "timestamp": 1773966858.1229975,
+  "unit": "ns"
+}
+```
+
 
 ## Integration with nersc-ebpf-streamer
 
@@ -104,12 +113,7 @@ Each record written to the ring buffer is a CBOR map with the following fields:
 a companion daemon that runs alongside `nerscfslat`. It reads CBOR records from
 the `LDMS_SHARED_STREAM` ring buffer and forwards them into
 [LDMS](https://ovis-hpc.readthedocs.io/en/latest/ldms/ldms-quickstart.html)
-(Lightweight Distributed Metric Service) as JSON stream messages. LDMS then
-aggregates and stores the data across the NERSC fleet for analysis and alerting.
-
-The systemd service for `nerscfslat` is ordered to start **after**
-`nersc-ebpf-streamer.service` and is configured as `PartOf` that service, so
-both start and stop together.
+(Lightweight Distributed Metric Service) as JSON stream messages.
 
 ## Configuration
 
@@ -124,17 +128,13 @@ PREFIXES=/global/u1 /global/u2 /global/cfs /pscratch /mscratch /ascratch
 After `nerscfslat` starts and its eBPF maps are loaded, the
 `nerscfslat_load_prefixes.sh` script uses `bpftool` to write the prefix list
 into the `FSLATENCYSTATS` BPF array map of each active probe. Up to **8 prefixes**
-are supported; each prefix must be at most **16 characters** long.
+are supported; each prefix must be at most **32 characters** long.
 
 ## Deployment
 
 The project produces an RPM via
 [`cargo-generate-rpm`](https://github.com/cat-in-136/cargo-generate-rpm).
-The RPM installs a systemd service (`nersc-ebpf-nerscfslat.service`) that
-starts `nerscfslat` automatically as part of `nersc-ready.target`. The
-`PREFIXES` environment variable in the unit file controls which path prefixes
-are monitored.
-
+The RPM installs a systemd service (`nersc-ebpf-nerscfslat.service`).
 ## Building from Source
 
 ### Prerequisites
@@ -163,19 +163,10 @@ the userspace binary.
 | `nerscfslat-ebpf-fsync`    | eBPF probe for `vfs_fsync_range`                         |
 | `nerscfslat-ebpf-write`    | eBPF probe for `vfs_write`                               |
 | `nerscfslat-ebpf-writev`   | eBPF probe for `vfs_writev`                              |
+| `nerscfslat-ebpf-writev`   | eBPF probe for `vfs_iter_write`                              |
+| `nerscfslat-ebpf-writev`   | eBPF probe for `vfs_read`                              |
+| `nerscfslat-ebpf-writev`   | eBPF probe for `vfs_readv`                              |
+| `nerscfslat-ebpf-writev`   | eBPF probe for `vfs_iter_read`                              |
 
 ## License
-
-With the exception of eBPF code, nerscfslat is distributed under the terms
-of either the [MIT license](LICENSE-MIT) or the [Apache License](LICENSE-APACHE)
-(version 2.0), at your option.
-
-Unless you explicitly state otherwise, any contribution intentionally submitted
-for inclusion in this crate by you, as defined in the Apache-2.0 license, shall
-be dual licensed as above, without any additional terms or conditions.
-
-### eBPF
-
-All eBPF code is distributed under either the terms of the
-[GNU General Public License, Version 2](LICENSE-GPL2) or the [MIT license](LICENSE-MIT),
-at your option.
+TBD
