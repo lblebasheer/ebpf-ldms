@@ -25,7 +25,7 @@ the required fields (we can change this) and pushes it to the ring buffer,
 will be accepted by the daemon and relayed to LDMS. An example of such a
 producer that is written using the [Aya](https://github.com/aya-rs/aya)
 framework which is the same framework that the daemon uses is
-[stuckclsync](https://gitlab.nersc.gov/ebasheer/stuck-clsync). It relies on
+[nerscfslat](https://gitlab.nersc.gov/ebasheer/fslatency). It relies on
 the `minicbor` crate to generate CBOR messages in the limited eBPF runtime
 environment.
 
