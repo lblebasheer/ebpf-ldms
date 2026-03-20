@@ -163,10 +163,10 @@ the userspace binary.
 | `nerscfslat-ebpf-fsync`    | eBPF probe for `vfs_fsync_range`                         |
 | `nerscfslat-ebpf-write`    | eBPF probe for `vfs_write`                               |
 | `nerscfslat-ebpf-writev`   | eBPF probe for `vfs_writev`                              |
-| `nerscfslat-ebpf-writev`   | eBPF probe for `vfs_iter_write`                              |
-| `nerscfslat-ebpf-writev`   | eBPF probe for `vfs_read`                              |
-| `nerscfslat-ebpf-writev`   | eBPF probe for `vfs_readv`                              |
-| `nerscfslat-ebpf-writev`   | eBPF probe for `vfs_iter_read`                              |
+| `nerscfslat-ebpf-iterwrite`   | eBPF probe for `vfs_iter_write`                              |
+| `nerscfslat-ebpf-read`   | eBPF probe for `vfs_read`                              |
+| `nerscfslat-ebpf-readv`   | eBPF probe for `vfs_readv`                              |
+| `nerscfslat-ebpf-iterwrite`   | eBPF probe for `vfs_iter_read`                              |
 
 ## License
 TBD
