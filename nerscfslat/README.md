@@ -26,16 +26,16 @@ precision, broken down by filesystem — without modifying any application code.
 
 ### eBPF Probes
 
-Four kernel functions are instrumented using `fentry`/`fexit` tracepoints:
+Eight kernel functions are instrumented using `fentry`/`fexit` tracepoints:
 
 | Kernel function    | Operation                     |
 |--------------------|-------------------------------|
 | `vfs_write`        | Single-buffer write           |
 | `vfs_writev`       | Vectored (scatter-gather) write |
-| `vfs_iter_write    | Vectored (scatter-gather) write |
+| `vfs_iter_write`    | Vectored (scatter-gather) write |
 | `vfs_read`        | Single-buffer read           |
 | `vfs_readv`       | Vectored (scatter-gather) read |
-| `vfs_iter_read    | Vectored (scatter-gather) read |
+| `vfs_iter_read`    | Vectored (scatter-gather) read |
 | `vfs_fsync_range`  | fsync / data flush            |
 | `filp_close`       | File close                    |
 
@@ -163,10 +163,10 @@ the userspace binary.
 | `nerscfslat-ebpf-fsync`    | eBPF probe for `vfs_fsync_range`                         |
 | `nerscfslat-ebpf-write`    | eBPF probe for `vfs_write`                               |
 | `nerscfslat-ebpf-writev`   | eBPF probe for `vfs_writev`                              |
-| `nerscfslat-ebpf-iterwrite`   | eBPF probe for `vfs_iter_write`                              |
-| `nerscfslat-ebpf-read`   | eBPF probe for `vfs_read`                              |
-| `nerscfslat-ebpf-readv`   | eBPF probe for `vfs_readv`                              |
-| `nerscfslat-ebpf-iterread`   | eBPF probe for `vfs_iter_read`                              |
+| `nerscfslat-ebpf-iterwrite`| eBPF probe for `vfs_iter_write`                          |
+| `nerscfslat-ebpf-read`     | eBPF probe for `vfs_read`                                |
+| `nerscfslat-ebpf-readv`    | eBPF probe for `vfs_readv`                               |
+| `nerscfslat-ebpf-iterread` | eBPF probe for `vfs_iter_read`                           |
 
 ## License
 TBD
