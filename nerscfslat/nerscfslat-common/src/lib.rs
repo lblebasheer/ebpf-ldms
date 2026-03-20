@@ -82,7 +82,6 @@ pub struct EntryRec {
 #[repr(C)]
 pub struct EventFields<'a> {
     pub id: &'a str,
-    pub version: &'a str,
     pub monotonic: u64,
     pub seq: u64,
     pub path_prefix: &'a [u8],
@@ -358,8 +357,7 @@ pub fn try_fslat_exit(ctx: FExitContext, filpop: &str, ret: u64) -> Result<u32, 
                 } {
                     if now - unsafe { (*fsstat).lastpublish } > AGG_INTERVAL {
                         let eventf = EventFields {
-                            id: "fslat",
-                            version: "v1",
+                            id: "fslat/v2",
                             monotonic: unsafe { bpf_ktime_get_ns() },
                             seq: unsafe { *countptr },
                             path_prefix: unsafe { &(*fsstat).path_prefix },
@@ -464,7 +462,6 @@ pub fn ringbuf_put(
 
     let EventFields {
         id,
-        version,
         monotonic,
         seq,
         path_prefix,
@@ -483,10 +480,6 @@ pub fn ringbuf_put(
             .str_noncanonical("id")
             .unwrap_unchecked()
             .str_noncanonical(id)
-            .unwrap_unchecked()
-            .str_noncanonical("version")
-            .unwrap_unchecked()
-            .str_noncanonical(version)
             .unwrap_unchecked()
             .str_noncanonical("timestamp_monotonic")
             .unwrap_unchecked()
