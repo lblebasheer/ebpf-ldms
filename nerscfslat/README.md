@@ -166,7 +166,7 @@ the userspace binary.
 | `nerscfslat-ebpf-iterwrite`   | eBPF probe for `vfs_iter_write`                              |
 | `nerscfslat-ebpf-read`   | eBPF probe for `vfs_read`                              |
 | `nerscfslat-ebpf-readv`   | eBPF probe for `vfs_readv`                              |
-| `nerscfslat-ebpf-iterwrite`   | eBPF probe for `vfs_iter_read`                              |
+| `nerscfslat-ebpf-iterread`   | eBPF probe for `vfs_iter_read`                              |
 
 ## License
 TBD
