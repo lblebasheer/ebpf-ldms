@@ -21,27 +21,33 @@ const PATHCOMPLEN: usize = PATHFRAGLEN;
 const NUM_PATH_PREFIX: u32 = 8;
 const AGG_INTERVAL: u64 = 1000 * 1000 * 1000; // 1s
 const BUFSIZE: usize = 1024;
-const NUM_COMP: u32 = 3;
+const NUM_COMP: u32 = 16;
 const MAX_PARENT: u32 = 32;
 const MAX_PARENT_LOOP: u32 = 64;
 
+// Global counter. per ebpf program (nerscfslat_ebpf_close, nerscfslat-ebpf-fsync ...etc)
 #[map]
 pub static COUNTER: Array<u64> = Array::with_max_entries(1, 0);
 
+// Map per ebpf program. One array entry for each prefix that contains prefix itself and collected
+// stats
 #[map]
 pub static mut FSLATENCYSTATS: Array<FsLatencyStats> = Array::with_max_entries(NUM_PATH_PREFIX, 0);
 
+// Used as a scratch area to hold the assembled path constructed by partial_d_path() from struct path
 #[map]
 pub static PATHBUF: PerCpuArray<PathSlice> = PerCpuArray::with_max_entries(1, 0);
 
+// ring buffer that temporarily holds the last NUM_COMP path components closest to '/',  resolved from struct path 
 #[map]
 pub static PATHBUFTMP: PerCpuArray<PathComponent> = PerCpuArray::with_max_entries(NUM_COMP, 0);
 
+// Map to hold the entry time of function call. indexed by (pid, tgid)
 #[map]
 pub static PTRLIST: HashMap<PidTgid, EntryRec> = HashMap::with_max_entries(8192, 0);
 
 #[map]
-pub static LDMS_SHARED_STREAM: RingBuf = RingBuf::pinned(8192, 0);
+pub static LDMS_SHARED_STREAM: RingBuf = RingBuf::pinned(1024, 0);
 
 #[allow(nonstandard_style)]
 #[allow(unnecessary_transmutes)]
