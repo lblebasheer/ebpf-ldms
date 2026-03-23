@@ -24,6 +24,10 @@ fn map_insert_key<T: Into<serde_json::Value>>(obj: &mut serde_json::Value, key: 
         .insert(key.to_string(), value.into());
 }
 
+fn map_remove_key(obj: &mut serde_json::Value, key: &str) {
+    obj.as_object_mut().unwrap().remove(key);
+}
+
 fn current_mono_realtime_offset() -> SystemTime {
     // as_nanos() returns u128
     let now_mono =
@@ -46,10 +50,8 @@ async fn ring_loop(
     hostname: String,
 ) -> anyhow::Result<()> {
     // track tokens for each producer sending messages to us.
-    let mut producer_tokens: HashMap<
-        (String, String),
-        SlidingWindowCounter<impl Fn() -> Duration>,
-    > = HashMap::new();
+    let mut producer_tokens: HashMap<String, SlidingWindowCounter<impl Fn() -> Duration>> =
+        HashMap::new();
 
     let hostname_json = serde_json::Value::String(hostname.clone());
     let time_offset = current_mono_realtime_offset();
@@ -74,36 +76,18 @@ async fn ring_loop(
                     continue;
                 }
             };
-            let (id, version, timestamp_monotonic) = (
-                &serde_v["id"],
-                &serde_v["version"],
-                &serde_v["timestamp_monotonic"],
-            );
+            let (id, timestamp_monotonic) = (&serde_v["id"], &serde_v["timestamp_monotonic"]);
 
-            if *id == serde_json::Value::Null
-                || *version == serde_json::Value::Null
-                || *timestamp_monotonic == serde_json::Value::Null
-            {
-                warn!("\"id\", \"version\", \"timestamp_monotonic\" fields not found in message. Skipping message.");
+            if *id == serde_json::Value::Null || *timestamp_monotonic == serde_json::Value::Null {
+                warn!("\"id\", \"timestamp_monotonic\" fields not found in message. Skipping message.");
                 continue;
             }
 
             let id = id.as_str().unwrap_or("invalid id field").to_string();
-            let version = version
-                .as_str()
-                .unwrap_or("invalid version field")
-                .to_string();
             let timestamp_monotonic = timestamp_monotonic.as_u64().unwrap_or(0u64);
 
             // Insert/override "hostname" field. Required for omni
             map_insert_key(&mut serde_v, "hostname", hostname_json.as_str());
-
-            // Insert/override "instance" field. Required for omni.
-            map_insert_key(
-                &mut serde_v,
-                "instance",
-                serde_json::Value::String(format!("{}/{}{}", hostname, id, version)),
-            );
 
             // Generate timestamp field from received monotonic clock timestamp. Required for omni.
             map_insert_key(
@@ -124,22 +108,21 @@ async fn ring_loop(
                 },
             );
 
-            // Track sliding window limits for each (id, version) pair.
+            // Remove timestamp_monotonic field since OMNI doesn't care about it
+            map_remove_key(&mut serde_v, "timestamp_monotonic");
+
+            // Track sliding window limits for each id.
             let _entry = producer_tokens
-                .entry((id.to_string(), version.to_string()))
+                .entry(id.to_string())
                 .or_insert(sliding_window_counter(msglimit, interval * 1000));
 
-            match producer_tokens.entry((id.to_string(), version.to_string())) {
+            match producer_tokens.entry(id.to_string()) {
                 Entry::Vacant(e) => {
                     e.insert(sliding_window_counter(msglimit, interval * 1000));
                 }
                 Entry::Occupied(mut e) => {
                     if e.get_mut().try_consume_one().is_err() {
-                        trace!(
-                            "Rate limit exceeded for {} {} empty. Skipping message.",
-                            id,
-                            version
-                        );
+                        trace!("Rate limit exceeded for {}. Skipping message.", id,);
                         continue;
                     }
                 }

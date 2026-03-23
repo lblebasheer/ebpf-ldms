@@ -1,5 +1,6 @@
 [Unit]
 Description = EBPF to LDMS streaming daemon
+After = nersc-ldmsd.sampler.service
 
 [Service]
 Type = simple

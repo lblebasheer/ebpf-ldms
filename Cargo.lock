@@ -566,7 +566,7 @@ dependencies = [
 
 [[package]]
 name = "ebpf_streamer"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "anyhow",
  "async-channel 2.5.0",
