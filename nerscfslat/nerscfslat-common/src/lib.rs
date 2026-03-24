@@ -408,10 +408,10 @@ pub fn update_stats(
     unsafe {
         #[allow(static_mut_refs)]
         let mut ws: FsLatencyStats = *fsstat;
-        if latency < ws.min {
+        if latency < ws.min || ws.min == 0 {
             ws.min = latency;
         }
-        if latency > ws.max {
+        if latency > ws.max || ws.max == 0 {
             ws.max = latency;
         }
         ws.count += 1;
