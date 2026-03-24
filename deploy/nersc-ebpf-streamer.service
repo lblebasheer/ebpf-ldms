@@ -1,6 +1,8 @@
 [Unit]
 Description = EBPF to LDMS streaming daemon
+Requires = nersc-ldmsd.sampler.service
 After = nersc-ldmsd.sampler.service
+Requires = munge.service
 After = munge.service
 
 [Service]
