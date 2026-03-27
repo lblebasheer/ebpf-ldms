@@ -2,15 +2,16 @@
 Description = EBPF to LDMS streaming daemon
 Requires = nersc-ldmsd.sampler.service
 After = nersc-ldmsd.sampler.service
-PartOf = nersc-ldmsd.sampler.service
+BindsTo = nersc-ldmsd.sampler.service
 Requires = munge.service
 After = munge.service
-PartOf = munge.service
+BindsTo = munge.service
 
 [Service]
 Type = simple
 EnvironmentFile = /etc/sysconfig/ebpf_streamer
 Environment="LD_LIBRARY_PATH=/opt/ovis-ldms/lib:$LD_LIBRARY_PATH"
+ExecStartPre=bash -c "while ! nc -z ${EBPF_STREAMER_LDMSD_HOST} ${EBPF_STREAMER_LDMSD_PORT}; do sleep 1; done"
 ExecStartPre = bpftool map create /sys/fs/bpf/LDMS_SHARED_STREAM type ringbuf entries ${EBPF_STREAMER_RING_SIZE} name LDMS_SHARED_STREAM
 ExecStart = /usr/sbin/ebpf_streamer \
                 --host ${EBPF_STREAMER_LDMSD_HOST} \
@@ -21,6 +22,7 @@ ExecStart = /usr/sbin/ebpf_streamer \
                 --authentication ${EBPF_STREAMER_LDMSD_AUTH} \
                 --hostname %H
 ExecStopPost = rm /sys/fs/bpf/LDMS_SHARED_STREAM
+Restart=always
 
 [Install]
 WantedBy = nersc-ready.target
