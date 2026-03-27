@@ -2,7 +2,7 @@
 Description = ebpf filesystem latency monitor
 Requires = nersc-ebpf-streamer.service
 After = nersc-ebpf-streamer.service
-PartOf = nersc-ebpf-streamer.service
+BindsTo = nersc-ebpf-streamer.service
 
 [Service]
 Type = simple
