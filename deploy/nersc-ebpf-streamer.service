@@ -22,7 +22,7 @@ ExecStart = /usr/sbin/ebpf_streamer \
                 --hostname %H
 ExecStopPost = rm /sys/fs/bpf/LDMS_SHARED_STREAM
 Restart=always
-RestartSec=10s
+RestartSec=5min
 
 [Install]
 WantedBy = nersc-ready.target
