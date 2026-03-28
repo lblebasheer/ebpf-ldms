@@ -1,8 +1,8 @@
 [Unit]
 Description = ebpf filesystem latency monitor
-Requires = nersc-ebpf-streamer.service
 After = nersc-ebpf-streamer.service
 BindsTo = nersc-ebpf-streamer.service
+StartLimitIntervalSec=0
 
 [Service]
 Type = simple
@@ -11,6 +11,8 @@ Environment="NUM_PROBES=8"
 ExecStart = /usr/sbin/nerscfslat
 ExecStartPost=bash -c "until [[ $(bpftool map|grep FSLATENCYSTATS|wc -l) -eq $NUM_PROBES ]];do :;done"
 ExecStartPost = /usr/local/sbin/nerscfslat_load_prefixes.sh
+Restart=always
+RestartSec=5min
 
 [Install]
 WantedBy = nersc-ready.target
