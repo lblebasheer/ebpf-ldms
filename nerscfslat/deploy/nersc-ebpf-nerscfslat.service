@@ -1,7 +1,6 @@
 [Unit]
 Description = ebpf filesystem latency monitor
 After = nersc-ebpf-streamer.service
-BindsTo = nersc-ebpf-streamer.service
 StartLimitIntervalSec=0
 
 [Service]
