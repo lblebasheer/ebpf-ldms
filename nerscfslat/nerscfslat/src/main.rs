@@ -1,11 +1,15 @@
-use anyhow::Context as _;
+use anyhow::{Context as _, anyhow};
 use aya::{
     Btf, Ebpf,
     programs::{FEntry, FExit},
 };
 #[rustfmt::skip]
 use log::{debug, warn};
+use std::path::Path;
+
 use tokio::signal;
+
+const RINGBUF_PIN_PATH: &str = "/sys/fs/bpf/LDMS_SHARED_STREAM";
 
 fn load_ebpf(bytes: &[u8]) -> anyhow::Result<Ebpf> {
     let mut ebpf = Ebpf::load(bytes)?;
@@ -68,6 +72,15 @@ fn attach_probe_pair(
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     env_logger::init();
+
+    // Exit if the shared ring buffer is not present. Usually indicating the streamer daemon isn't
+    // running
+    if !Path::new(RINGBUF_PIN_PATH).exists() {
+        return Err(anyhow!(
+            "Pinned Ring Buffer not found at {}.\nStreamer daemon may not be running",
+            RINGBUF_PIN_PATH
+        ));
+    }
 
     // Bump the memlock rlimit. This is needed for older kernels that don't use the
     // new memcg based accounting, see https://lwn.net/Articles/837122/

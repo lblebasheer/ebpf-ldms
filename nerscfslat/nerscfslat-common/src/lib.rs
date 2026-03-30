@@ -38,7 +38,7 @@ pub static mut FSLATENCYSTATS: Array<FsLatencyStats> = Array::with_max_entries(N
 #[map]
 pub static PATHBUF: PerCpuArray<PathSlice> = PerCpuArray::with_max_entries(1, 0);
 
-// ring buffer that temporarily holds the last NUM_COMP path components closest to '/',  resolved from struct path 
+// ring buffer that temporarily holds the last NUM_COMP path components closest to '/',  resolved from struct path
 #[map]
 pub static PATHBUFTMP: PerCpuArray<PathComponent> = PerCpuArray::with_max_entries(NUM_COMP, 0);
 
