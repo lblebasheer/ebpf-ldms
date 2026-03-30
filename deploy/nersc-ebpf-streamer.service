@@ -4,7 +4,6 @@ After = nersc-ldmsd.sampler.service
 BindsTo = nersc-ldmsd.sampler.service
 After = munge.service
 BindsTo = munge.service
-StartLimitIntervalSec=0
 
 [Service]
 Type = simple
