@@ -1,6 +1,6 @@
 [package]
 name = "nerscfslat"
-version = "0.8.6"
+version = "0.8.7"
 edition.workspace = true
 
 license.workspace = true
@@ -14,13 +14,8 @@ aya-log = { workspace = true }
 env_logger = { workspace = true }
 libc = { workspace = true }
 log = { workspace = true }
-tokio = { workspace = true, features = [
-    "macros",
-    "rt",
-    "rt-multi-thread",
-    "net",
-    "signal",
-] }
+smol = { workspace = true }
+ctrlc = { workspace = true }
 [build-dependencies]
 anyhow = { workspace = true }
 aya-build = { workspace = true }
@@ -48,7 +43,6 @@ path = "src/main.rs"
 
 [package.metadata.generate-rpm]
 name = "nerscfslat"
-version = "0.8.6"
 license = "MIT OR Apache-2.0"
 summary = "Measure latency of filesystem calls"
 auto-req = "disabled"

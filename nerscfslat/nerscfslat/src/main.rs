@@ -7,8 +7,6 @@ use aya::{
 use log::{debug, warn};
 use std::path::Path;
 
-use tokio::signal;
-
 const RINGBUF_PIN_PATH: &str = "/sys/fs/bpf/LDMS_SHARED_STREAM";
 
 fn load_ebpf(bytes: &[u8]) -> anyhow::Result<Ebpf> {
@@ -19,15 +17,15 @@ fn load_ebpf(bytes: &[u8]) -> anyhow::Result<Ebpf> {
             warn!("failed to initialize eBPF logger: {e}");
         }
         Ok(logger) => {
-            let mut logger =
-                tokio::io::unix::AsyncFd::with_interest(logger, tokio::io::Interest::READABLE)?;
-            tokio::task::spawn(async move {
+            smol::spawn(async move {
+                let mut logger = smol::Async::new(logger).unwrap();
                 loop {
-                    let mut guard = logger.readable_mut().await.unwrap();
-                    guard.get_inner_mut().flush();
-                    guard.clear_ready();
+                    logger.readable().await.unwrap();
+                    // SAFETY: flush() does not replace the inner I/O source
+                    unsafe { logger.get_mut() }.flush();
                 }
-            });
+            })
+            .detach();
         }
     }
     Ok(ebpf)
@@ -69,8 +67,7 @@ fn attach_probe_pair(
     Ok(())
 }
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
+fn main() -> anyhow::Result<()> {
     env_logger::init();
 
     // Exit if the shared ring buffer is not present. Usually indicating the streamer daemon isn't
@@ -191,9 +188,12 @@ async fn main() -> anyhow::Result<()> {
         &btf,
     )?;
 
-    let ctrl_c = signal::ctrl_c();
+    let (tx, rx) = smol::channel::bounded::<()>(1);
+    ctrlc::set_handler(move || {
+        let _ = tx.send_blocking(());
+    })?;
     println!("Waiting for Ctrl-C...");
-    ctrl_c.await?;
+    smol::block_on(rx.recv()).ok();
     println!("Exiting...");
 
     Ok(())
