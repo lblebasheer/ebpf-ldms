@@ -302,9 +302,7 @@ extern "C" fn assemble_pathfrag(index: u32, ctx: *mut AssembleCtx) -> u64 {
 
     let path = &(*buf_elem).pathcomp as *const [u8] as *mut u8;
     let len = buf_elem.len as u32;
-    if !aya_ebpf::check_bounds_signed(len as i64, 1i64, (PATHFRAGLEN - 1) as i64) {
-        return 1;
-    }
+    let len = if buf_elem.len > (PATHFRAGLEN - 1) { (PATHFRAGLEN - 1) as u32 } else { len };
     unsafe {
         let copied = (*ctx).copied as u32;
         let remaining = PATHFRAGLEN as u32 - copied - 1;
