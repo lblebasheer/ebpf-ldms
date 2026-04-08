@@ -9,109 +9,20 @@ use aya_ebpf::{
         bpf_dynptr_from_mem, bpf_dynptr_write, bpf_get_current_task_btf, bpf_ktime_get_ns,
         bpf_loop, bpf_map_update_elem, bpf_probe_read_kernel, bpf_probe_read_kernel_str_bytes,
     },
-    macros::map,
-    maps::{Array, HashMap, PerCpuArray, RingBuf},
     programs::{FEntryContext, FExitContext},
 };
 use aya_log_ebpf::{debug, error, trace};
 use minicbor::Encoder;
-
-const PATHFRAGLEN: usize = 32;
-const PATHCOMPLEN: usize = PATHFRAGLEN;
-const NUM_PATH_PREFIX: u32 = 8;
-const AGG_INTERVAL: u64 = 1000 * 1000 * 1000; // 1s
-const BUFSIZE: usize = 1024;
-const NUM_COMP: u32 = 16;
-const MAX_PARENT: u32 = 32;
-const MAX_PARENT_LOOP: u32 = 64;
-
-// Global counter. per ebpf program (nerscfslat_ebpf_close, nerscfslat-ebpf-fsync ...etc)
-#[map]
-pub static COUNTER: Array<u64> = Array::with_max_entries(1, 0);
-
-// Map per ebpf program. One array entry for each prefix that contains prefix itself and collected
-// stats
-#[map]
-pub static mut FSLATENCYSTATS: Array<FsLatencyStats> = Array::with_max_entries(NUM_PATH_PREFIX, 0);
-
-// Used as a scratch area to hold the assembled path constructed by partial_d_path() from struct path
-#[map]
-pub static PATHBUF: PerCpuArray<PathSlice> = PerCpuArray::with_max_entries(1, 0);
-
-// ring buffer that temporarily holds the last NUM_COMP path components closest to '/',  resolved from struct path
-#[map]
-pub static PATHBUFTMP: PerCpuArray<PathComponent> = PerCpuArray::with_max_entries(NUM_COMP, 0);
-
-// Map to hold the entry time of function call. indexed by (pid, tgid)
-#[map]
-pub static PTRLIST: HashMap<PidTgid, EntryRec> = HashMap::with_max_entries(8192, 0);
-
-#[map]
-pub static LDMS_SHARED_STREAM: RingBuf = RingBuf::pinned(1024, 0);
 
 #[allow(nonstandard_style)]
 #[allow(unnecessary_transmutes)]
 #[allow(unsafe_op_in_unsafe_fn)]
 #[allow(dead_code)]
 mod vmlinux;
-
-type PathSlice = [u8; PATHFRAGLEN];
-type PathCompSlice = [u8; PATHCOMPLEN];
-type PidTgid = (u32, u32);
-
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub struct PathComponent {
-    pub len: usize,
-    pub pathcomp: PathCompSlice,
-}
-
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub struct FsLatencyStats {
-    pub pathlen: u32,
-    pub path_prefix: PathSlice,
-    pub min: u64,
-    pub max: u64,
-    pub total_lat: u64,
-    pub total_bytes: u64,
-    pub count: u64,
-    pub lastpublish: u64,
-}
-
-#[repr(C)]
-pub struct EntryRec {
-    pub timestamp: u64,
-    pub path: PathSlice,
-}
-
-#[repr(C)]
-pub struct EventFields<'a> {
-    pub id: &'a str,
-    pub monotonic: u64,
-    pub seq: u64,
-    pub path_prefix: &'a [u8],
-}
-
-#[repr(C)]
-struct AssembleCtx<'a> {
-    start: u32,
-    copied: u32,
-    max_pathidx: u32,
-    pathfrag_dynptr: *mut bpf_dynptr,
-    ctx: &'a FEntryContext,
-}
-
-#[repr(C)]
-struct PathWalkCtx<'a> {
-    dentry: *mut vmlinux::dentry,
-    mnt: *const vmlinux::mount,
-    pathidx: u32,
-    start: u32,
-    root_dentry: *mut vmlinux::dentry,
-    root_vfsmount: *const vmlinux::vfsmount,
-    ctx: &'a FEntryContext,
-}
+mod maps;
+use crate::maps::*;
+mod constants;
+use crate::constants::*;
 
 pub fn try_fslat_entry(ctx: FEntryContext, _filpop: &str, file_arg_idx: usize) -> Result<u32, u32> {
     let now = unsafe { bpf_ktime_get_ns() };
