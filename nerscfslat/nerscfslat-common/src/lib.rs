@@ -13,7 +13,7 @@ use aya_ebpf::{
     maps::{Array, HashMap, PerCpuArray, RingBuf},
     programs::{FEntryContext, FExitContext},
 };
-use aya_log_ebpf::{debug, error};
+use aya_log_ebpf::{debug, error, trace};
 use minicbor::Encoder;
 
 const PATHFRAGLEN: usize = 32;
@@ -132,7 +132,7 @@ pub fn try_fslat_entry(ctx: FEntryContext, _filpop: &str, file_arg_idx: usize) -
         let _ = PTRLIST.insert(&(ctx.pid(), ctx.tgid()), &entryrec, 0u64);
     }
     ret = ret.clamp(0, PATHFRAGLEN as i32);
-    debug!(ctx, "partial_path: {}", unsafe {
+    trace!(ctx, "partial_path: {}", unsafe {
         core::str::from_utf8_unchecked(&(*pathbuf_ptr).get_unchecked(..ret as usize))
     });
     Ok(0)
@@ -302,7 +302,11 @@ extern "C" fn assemble_pathfrag(index: u32, ctx: *mut AssembleCtx) -> u64 {
 
     let path = &(*buf_elem).pathcomp as *const [u8] as *mut u8;
     let len = buf_elem.len as u32;
-    let len = if buf_elem.len > (PATHFRAGLEN - 1) { (PATHFRAGLEN - 1) as u32 } else { len };
+    let len = if buf_elem.len > (PATHFRAGLEN - 1) {
+        (PATHFRAGLEN - 1) as u32
+    } else {
+        len
+    };
     unsafe {
         let copied = (*ctx).copied as u32;
         let remaining = PATHFRAGLEN as u32 - copied - 1;
