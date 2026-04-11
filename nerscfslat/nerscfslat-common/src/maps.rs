@@ -4,6 +4,7 @@ use aya_ebpf::{
     maps::{Array, HashMap, PerCpuArray, RingBuf},
     programs::FEntryContext,
 };
+use bare_metal_modulo::ModNumC;
 
 use crate::constants::*;
 
@@ -73,10 +74,11 @@ pub struct EventFields<'a> {
 
 #[repr(C)]
 pub struct AssembleCtx<'a> {
-    pub start: u32,
+    pub start: ModNumC<u32, { NUM_COMP as usize }>,
     pub copied: u32,
-    pub max_pathidx: u32,
+    pub num_components: u32,
     pub pathfrag_dynptr: *mut bpf_dynptr,
+    pub is_absolute: bool,
     pub ctx: &'a FEntryContext,
 }
 
@@ -84,10 +86,10 @@ pub struct AssembleCtx<'a> {
 pub struct PathWalkCtx<'a> {
     pub dentry: *mut vmlinux::dentry,
     pub mnt: *const vmlinux::mount,
-    pub pathidx: u32,
-    pub start: u32,
+    pub loop_ctr: u32,
+    pub mod_ctr: ModNumC<u32, { NUM_COMP as usize }>,
     pub root_dentry: *mut vmlinux::dentry,
     pub root_vfsmount: *const vmlinux::vfsmount,
+    pub is_absolute: bool,
     pub ctx: &'a FEntryContext,
 }
-

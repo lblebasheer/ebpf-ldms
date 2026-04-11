@@ -12,14 +12,15 @@ use aya_ebpf::{
     programs::{FEntryContext, FExitContext},
 };
 use aya_log_ebpf::{debug, error, trace};
+use bare_metal_modulo::{MNum, ModNumC};
 use minicbor::Encoder;
 
+mod maps;
 #[allow(nonstandard_style)]
 #[allow(unnecessary_transmutes)]
 #[allow(unsafe_op_in_unsafe_fn)]
 #[allow(dead_code)]
 mod vmlinux;
-mod maps;
 use crate::maps::*;
 mod constants;
 use crate::constants::*;
@@ -94,10 +95,11 @@ pub fn partial_d_path(
     let mut walk_ctx = PathWalkCtx {
         dentry,
         mnt,
-        pathidx: 0,
-        start: 0,
+        loop_ctr: 0,
+        mod_ctr: ModNumC::new(0),
         root_dentry,
         root_vfsmount,
+        is_absolute: false,
         ctx,
     };
     unsafe {
@@ -109,35 +111,34 @@ pub fn partial_d_path(
         );
     }
 
-    let pathidx = walk_ctx.pathidx;
     let mut assem_ctx = AssembleCtx {
-        start: walk_ctx.start,
+        // walk_ctx.mod_ctr points to the next buffer element to be filled
+        // by path_walk_step
+        start: walk_ctx.mod_ctr - 1,
         copied: 0,
-        max_pathidx: NUM_COMP.min(pathidx),
+        num_components: NUM_COMP.min(walk_ctx.loop_ctr),
         pathfrag_dynptr: &mut pathfrag_dynptr as *mut bpf_dynptr,
+        is_absolute: walk_ctx.is_absolute,
         ctx,
     };
     unsafe {
-        bpf_dynptr_write(
-            &pathfrag_dynptr as *const bpf_dynptr,
-            0,
-            &b'/' as *const u8 as *mut c_void,
-            1u32,
-            0u64,
-        );
-        assem_ctx.copied = 1;
+        // If we have an absolute pathname
+        // prepend a / to the path
+        if assem_ctx.is_absolute {
+            bpf_dynptr_write(
+                assem_ctx.pathfrag_dynptr as *const bpf_dynptr,
+                0u32,
+                &b'/' as *const u8 as *mut c_void,
+                1u32,
+                0u64,
+            );
+            assem_ctx.copied = 1;
+        }
         bpf_loop(
-            NUM_COMP.min(pathidx),
+            NUM_COMP.min(assem_ctx.num_components),
             assemble_pathfrag as *mut c_void,
             &mut assem_ctx as *mut AssembleCtx as *mut c_void,
             0_u64,
-        );
-        bpf_dynptr_write(
-            &pathfrag_dynptr as *const bpf_dynptr,
-            assem_ctx.copied,
-            &0u8 as *const u8 as *mut c_void,
-            1u32,
-            0u64,
         );
     }
     assem_ctx.copied as i32
@@ -145,9 +146,6 @@ pub fn partial_d_path(
 
 extern "C" fn path_walk_step(_index: u32, ctx: *mut PathWalkCtx) -> u64 {
     unsafe {
-        if (*ctx).pathidx > MAX_PARENT {
-            return 1;
-        }
         let dentry = (*ctx).dentry;
         let mnt = (*ctx).mnt;
         // fs/d_path.c: const struct dentry *parent = READ_ONCE(dentry->d_parent)
@@ -162,6 +160,8 @@ extern "C" fn path_walk_step(_index: u32, ctx: *mut PathWalkCtx) -> u64 {
                 .unwrap_unchecked();
         // fs/d_path.c: while (dentry != root->dentry || &mnt->mnt != root->mnt) {
         if dentry == (*ctx).root_dentry && vfsmount == (*ctx).root_vfsmount {
+            // We reached the process root directory
+            (*ctx).is_absolute = true;
             return 1;
         }
         // fs/d_path.c: if (dentry == mnt->mnt.mnt_root) {
@@ -188,16 +188,19 @@ extern "C" fn path_walk_step(_index: u32, ctx: *mut PathWalkCtx) -> u64 {
         let name_ptr =
             bpf_probe_read_kernel(&raw const (*dentry).d_name.name as *const *const c_uchar)
                 .unwrap_unchecked();
-        let pathidx = (*ctx).pathidx;
-        let Some(comp) = PATHBUFTMP.get_ptr_mut(pathidx % NUM_COMP) else {
+        let Some(comp) = PATHBUFTMP.get_ptr_mut((*ctx).mod_ctr.a()) else {
             return 1;
         };
+        // Copy dentry->d_name.name to path components ringbuffer PATHBUFTMP.
         let name = bpf_probe_read_kernel_str_bytes(name_ptr, &mut (*comp).pathcomp as &mut [u8])
             .unwrap_unchecked();
         (*comp).len = name.len();
-        (*ctx).start = (pathidx % NUM_COMP) as u32;
-        (*ctx).pathidx += 1;
         (*ctx).dentry = parent;
+        (*ctx).loop_ctr += 1;
+        (*ctx).mod_ctr += 1;
+        if (*ctx).loop_ctr > MAX_PARENT {
+            return 1;
+        }
     }
     0
 }
@@ -205,26 +208,26 @@ extern "C" fn path_walk_step(_index: u32, ctx: *mut PathWalkCtx) -> u64 {
 extern "C" fn assemble_pathfrag(index: u32, ctx: *mut AssembleCtx) -> u64 {
     // index into PATHBUFTMP ring buffer starting at the last path component written, which is
     // closest to the root
-    let idx = unsafe { ((*ctx).start + NUM_COMP - index) % NUM_COMP };
-    let Some(buf_elem) = PATHBUFTMP.get(idx) else {
+    let idx = unsafe { (*ctx).start } - index;
+    let Some(buf_elem) = PATHBUFTMP.get(idx.a()) else {
         unsafe { debug!((*ctx).ctx, "bad index into PATHBUFTMP") };
         return 1;
     };
 
     let path = &(*buf_elem).pathcomp as *const [u8] as *mut u8;
     let len = buf_elem.len as u32;
-    let len = if buf_elem.len > (PATHFRAGLEN - 1) {
-        (PATHFRAGLEN - 1) as u32
+    let len = if buf_elem.len > PATHFRAGLEN {
+        PATHFRAGLEN as u32
     } else {
         len
     };
     unsafe {
         let copied = (*ctx).copied as u32;
-        let remaining = PATHFRAGLEN as u32 - copied - 1;
-        if !aya_ebpf::check_bounds_signed(copied as i64, 0i64, (PATHFRAGLEN - 1) as i64) {
+        let remaining = PATHFRAGLEN as u32 - copied;
+        if !aya_ebpf::check_bounds_signed(copied as i64, 0i64, PATHFRAGLEN as i64) {
             return 1;
         }
-        if !aya_ebpf::check_bounds_signed(remaining as i64, 0i64, (PATHFRAGLEN - 1) as i64) {
+        if !aya_ebpf::check_bounds_signed(remaining as i64, 0i64, PATHFRAGLEN as i64) {
             return 1;
         }
         if 0 > bpf_dynptr_write(
@@ -236,7 +239,9 @@ extern "C" fn assemble_pathfrag(index: u32, ctx: *mut AssembleCtx) -> u64 {
         ) {
             return 1;
         }
-        if index != (*ctx).max_pathidx - 1 {
+
+        // Match on the penultimate pathname component
+        if index < ((*ctx).num_components - 1) {
             bpf_dynptr_write(
                 (*ctx).pathfrag_dynptr as *const bpf_dynptr,
                 copied + len,
