@@ -1,6 +1,7 @@
 use aya_ebpf::{
-    bindings::bpf_dynptr,
-    macros::map,
+    bindings::{bpf_dynptr, bpf_spin_lock},
+    btf_maps,
+    macros::{btf_map, map},
     maps::{Array, HashMap, PerCpuArray, RingBuf},
     programs::FEntryContext,
 };
@@ -14,8 +15,9 @@ pub static COUNTER: Array<u64> = Array::with_max_entries(1, 0);
 
 // Map per ebpf program. One array entry for each prefix that contains prefix itself and collected
 // stats
-#[map]
-pub static mut FSLATENCYSTATS: Array<FsLatencyStats> = Array::with_max_entries(NUM_PATH_PREFIX, 0);
+#[btf_map]
+pub static mut FSLATENCYSTATS: btf_maps::Array<FsLatencyStats, { NUM_PATH_PREFIX as usize }, 0> =
+    btf_maps::Array::new();
 
 // Used as a scratch area to hold the assembled path constructed by partial_d_path() from struct path
 #[map]
@@ -38,6 +40,15 @@ pub type PathSlice = [u8; PATHFRAGLEN];
 pub type PathCompSlice = [u8; PATHCOMPLEN];
 pub type PidTgid = (u32, u32);
 
+// (start, end) timestamp pair. (0, 0) means empty — safe because bpf_ktime_get_ns() never
+// returns 0.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct Interval {
+    pub start: u64,
+    pub end: u64,
+}
+
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct PathComponent {
@@ -46,8 +57,8 @@ pub struct PathComponent {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy)]
 pub struct FsLatencyStats {
+    pub lock: bpf_spin_lock,
     pub pathlen: u32,
     pub path_prefix: PathSlice,
     pub min: u64,
@@ -56,6 +67,9 @@ pub struct FsLatencyStats {
     pub total_bytes: u64,
     pub count: u64,
     pub lastpublish: u64,
+    pub active_time: u64,
+    pub interval_head: ModNumC<u32, { NUM_INTERVAL as usize }>,
+    pub intervals: [Interval; NUM_INTERVAL as usize],
 }
 
 #[repr(C)]

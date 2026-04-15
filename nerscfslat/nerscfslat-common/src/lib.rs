@@ -7,7 +7,8 @@ use aya_ebpf::{
     cty::{c_uchar, c_void},
     helpers::{
         bpf_dynptr_from_mem, bpf_dynptr_write, bpf_get_current_task_btf, bpf_ktime_get_ns,
-        bpf_loop, bpf_map_update_elem, bpf_probe_read_kernel, bpf_probe_read_kernel_str_bytes,
+        bpf_loop, bpf_probe_read_kernel, bpf_probe_read_kernel_str_bytes, bpf_spin_lock,
+        bpf_spin_unlock,
     },
     programs::{FEntryContext, FExitContext},
 };
@@ -266,7 +267,6 @@ pub fn try_fslat_exit(ctx: FExitContext, filpop: &str, ret: u64) -> Result<u32, 
     match unsafe { PTRLIST.get(pid_tgid) } {
         Some(entryrec) => {
             let now = unsafe { bpf_ktime_get_ns() };
-            let delta = now - entryrec.timestamp;
             for idx in 0..NUM_PATH_PREFIX {
                 #[allow(static_mut_refs)]
                 let Some(fsstat) = (unsafe { FSLATENCYSTATS.get_ptr_mut(idx) }) else {
@@ -287,15 +287,15 @@ pub fn try_fslat_exit(ctx: FExitContext, filpop: &str, ret: u64) -> Result<u32, 
                             path_prefix: unsafe { &(*fsstat).path_prefix },
                         };
 
-                        let Ok(_) = update_stats(idx, fsstat, delta, ret) else {
+                        if update_stats(fsstat, entryrec.timestamp, now, ret) != 0 {
                             error!(ctx, "update_stats() failed");
                             return Err(1);
-                        };
+                        }
                         let Ok(_) = ringbuf_put(&eventf, fsstat, filpop, "ns") else {
                             error!(ctx, "ringbuf_put() failed");
                             return Err(1);
                         };
-                        let Ok(_) = clear_stats(&ctx, idx, fsstat, now) else {
+                        let Ok(_) = clear_stats(&ctx, fsstat, now) else {
                             error!(ctx, "clear_stats() failed");
                             return Err(1);
                         };
@@ -303,10 +303,10 @@ pub fn try_fslat_exit(ctx: FExitContext, filpop: &str, ret: u64) -> Result<u32, 
                             *countptr += 1;
                         }
                     } else {
-                        let Ok(_) = update_stats(idx, fsstat, delta, ret) else {
+                        if update_stats(fsstat, entryrec.timestamp, now, ret) != 0 {
                             error!(ctx, "update_stats() failed");
                             return Err(1);
-                        };
+                        }
                     }
                 }
             }
@@ -317,58 +317,57 @@ pub fn try_fslat_exit(ctx: FExitContext, filpop: &str, ret: u64) -> Result<u32, 
     Ok(0)
 }
 
-pub fn update_stats(
-    idx: u32,
-    fsstat: *mut FsLatencyStats,
-    latency: u64,
-    bytes: u64,
-) -> Result<u32, u32> {
+pub fn update_stats(fsstat: *mut FsLatencyStats, start: u64, end: u64, bytes: u64) -> u32 {
     unsafe {
-        #[allow(static_mut_refs)]
-        let mut ws: FsLatencyStats = *fsstat;
-        if latency < ws.min || ws.min == 0 {
-            ws.min = latency;
+        let latency = end - start;
+        if latency < (*fsstat).min || (*fsstat).min == 0 {
+            (*fsstat).min = latency;
         }
-        if latency > ws.max || ws.max == 0 {
-            ws.max = latency;
+        if latency > (*fsstat).max || (*fsstat).max == 0 {
+            (*fsstat).max = latency;
         }
-        ws.count += 1;
-        ws.total_lat += latency;
-        ws.total_bytes += bytes;
+        (*fsstat).count += 1;
+        (*fsstat).total_lat += latency;
+        (*fsstat).total_bytes += bytes;
 
-        #[allow(static_mut_refs)]
-        bpf_map_update_elem(
-            &raw mut FSLATENCYSTATS as *mut c_void,
-            &raw const idx as *const c_void,
-            &raw const ws as *const c_void,
-            0u64,
-        );
+        // Compute the net new coverage this interval adds to active_time by subtracting
+        // any portion already covered by intervals still in the window.
+        let mut contribution: i64 = latency as i64;
+        for i in 0..NUM_INTERVAL as usize {
+            let iv = (*fsstat).intervals[i];
+            if iv.start == 0 && iv.end == 0 {
+                continue; // empty slot
+            }
+            if start <= iv.end && iv.start <= end {
+                let overlap_start = start.max(iv.start);
+                let overlap_end = end.min(iv.end);
+                contribution -= (overlap_end - overlap_start) as i64;
+            }
+        }
+        if contribution > 0 {
+            (*fsstat).active_time += contribution as u64;
+        }
+
+        // Append interval, evicting the oldest slot when the buffer is full.
+        let slot = {(*fsstat).interval_head.a() as usize}.clamp(0, (NUM_INTERVAL-1) as usize);
+        bpf_spin_lock(&mut (*fsstat).lock);
+        (*fsstat).intervals[slot] = Interval { start, end };
+        bpf_spin_unlock(&mut (*fsstat).lock);
+        (*fsstat).interval_head += 1;
     }
-    Ok(0)
+    0
 }
 
-pub fn clear_stats(
-    _ctx: &FExitContext,
-    idx: u32,
-    fsstat: *mut FsLatencyStats,
-    now: u64,
-) -> Result<u32, u32> {
+pub fn clear_stats(_ctx: &FExitContext, fsstat: *mut FsLatencyStats, now: u64) -> Result<u32, u32> {
     unsafe {
-        #[allow(static_mut_refs)]
-        let mut ws: FsLatencyStats = *fsstat;
-        ws.lastpublish = now;
-        ws.count = 0;
-        ws.total_lat = 0;
-        ws.total_bytes = 0;
-        ws.min = u64::MAX;
-        ws.max = u64::MIN;
-        #[allow(static_mut_refs)]
-        bpf_map_update_elem(
-            &raw mut FSLATENCYSTATS as *mut c_void,
-            &raw const idx as *const c_void,
-            &raw const ws as *const c_void,
-            0u64,
-        );
+        (*fsstat).lastpublish = now;
+        (*fsstat).count = 0;
+        (*fsstat).total_lat = 0;
+        (*fsstat).total_bytes = 0;
+        (*fsstat).min = u64::MAX;
+        (*fsstat).max = u64::MIN;
+        (*fsstat).active_time = 0;
+        (*fsstat).interval_head = ModNumC::new(0);
     }
     Ok(0)
 }
@@ -444,6 +443,10 @@ pub fn ringbuf_put(
             .str_noncanonical("count_samples")
             .unwrap_unchecked()
             .u64_noncanonical((*fsstat).count)
+            .unwrap_unchecked()
+            .str_noncanonical("active_time")
+            .unwrap_unchecked()
+            .u64_noncanonical((*fsstat).active_time)
             .unwrap_unchecked()
             .end()
             .unwrap_unchecked()
