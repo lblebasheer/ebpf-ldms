@@ -1,5 +1,5 @@
 #![no_std]
-use core::mem::offset_of;
+use core::{mem::offset_of, ptr::write_volatile};
 
 use aya_ebpf::{
     EbpfContext,
@@ -321,6 +321,7 @@ pub fn try_fslat_exit(ctx: FExitContext, filpop: &str, ret: u64) -> Result<u32, 
 pub fn update_stats(fsstat: *mut FsLatencyStats, start: u64, end: u64, bytes: u64) -> u32 {
     unsafe {
         let latency = end - start;
+        bpf_spin_lock(&mut (*fsstat).lock);
         if latency < (*fsstat).min || (*fsstat).min == 0 {
             (*fsstat).min = latency;
         }
@@ -330,45 +331,24 @@ pub fn update_stats(fsstat: *mut FsLatencyStats, start: u64, end: u64, bytes: u6
         (*fsstat).count += 1;
         (*fsstat).total_lat += latency;
         (*fsstat).total_bytes += bytes;
-
-        // Compute the net new coverage this interval adds to active_time by subtracting
-        // any portion already covered by intervals still in the window.
-        let mut contribution: i64 = latency as i64;
-        for i in 0..NUM_INTERVAL as usize {
-            let iv = (*fsstat).intervals[i];
-            if iv.start == 0 && iv.end == 0 {
-                continue; // empty slot
-            }
-            if start <= iv.end && iv.start <= end {
-                let overlap_start = start.max(iv.start);
-                let overlap_end = end.min(iv.end);
-                contribution -= (overlap_end - overlap_start) as i64;
-            }
-        }
-        if contribution > 0 {
-            (*fsstat).active_time += contribution as u64;
-        }
-
-        // Append interval, evicting the oldest slot when the buffer is full.
-        let slot = {(*fsstat).interval_head.a() as usize}.clamp(0, (NUM_INTERVAL-1) as usize);
-        bpf_spin_lock(&mut (*fsstat).lock);
-        (*fsstat).intervals[slot] = Interval { start, end };
         bpf_spin_unlock(&mut (*fsstat).lock);
-        (*fsstat).interval_head += 1;
     }
     0
 }
 
 pub fn clear_stats(_ctx: &FExitContext, fsstat: *mut FsLatencyStats, now: u64) -> Result<u32, u32> {
     unsafe {
+        bpf_spin_lock(&mut (*fsstat).lock);
         (*fsstat).lastpublish = now;
-        (*fsstat).count = 0;
-        (*fsstat).total_lat = 0;
-        (*fsstat).total_bytes = 0;
         (*fsstat).min = u64::MAX;
         (*fsstat).max = u64::MIN;
-        (*fsstat).active_time = 0;
-        (*fsstat).interval_head = ModNumC::new(0);
+        // write_volatile() prevents the compiler from optimizing the zeroing of the fields into a
+        // call to memset(). which the verifier will disallow since function calls while holding a
+        // lock are forbidden
+        write_volatile(&raw mut (*fsstat).total_lat, 0);
+        write_volatile(&raw mut (*fsstat).total_bytes, 0);
+        write_volatile(&raw mut (*fsstat).count, 0);
+        bpf_spin_unlock(&mut (*fsstat).lock);
     }
     Ok(0)
 }
@@ -445,9 +425,9 @@ pub fn ringbuf_put(
             .unwrap_unchecked()
             .u64_noncanonical((*fsstat).count)
             .unwrap_unchecked()
-            .str_noncanonical("active_time")
+            .str_noncanonical("aggregation_time")
             .unwrap_unchecked()
-            .u64_noncanonical((*fsstat).active_time)
+            .u64_noncanonical(AGG_INTERVAL)
             .unwrap_unchecked()
             .end()
             .unwrap_unchecked()

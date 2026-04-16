@@ -40,15 +40,6 @@ pub type PathSlice = [u8; PATHFRAGLEN];
 pub type PathCompSlice = [u8; PATHCOMPLEN];
 pub type PidTgid = (u32, u32);
 
-// (start, end) timestamp pair. (0, 0) means empty — safe because bpf_ktime_get_ns() never
-// returns 0.
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub struct Interval {
-    pub start: u64,
-    pub end: u64,
-}
-
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct PathComponent {
@@ -67,9 +58,6 @@ pub struct FsLatencyStats {
     pub total_bytes: u64,
     pub count: u64,
     pub lastpublish: u64,
-    pub active_time: u64,
-    pub interval_head: ModNumC<u32, { NUM_INTERVAL as usize }>,
-    pub intervals: [Interval; NUM_INTERVAL as usize],
 }
 
 #[repr(C)]
