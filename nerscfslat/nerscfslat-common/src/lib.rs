@@ -184,6 +184,7 @@ extern "C" fn path_walk_step(_index: u32, ctx: *mut PathWalkCtx) -> u64 {
         }
         // fs/d_path.c: if (unlikely(dentry == parent))
         if dentry == parent {
+            (*ctx).is_absolute = true;
             return 1;
         }
         let name_ptr =
