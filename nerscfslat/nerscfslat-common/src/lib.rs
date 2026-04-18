@@ -259,7 +259,7 @@ extern "C" fn assemble_pathfrag(index: u32, ctx: *mut AssembleCtx) -> u64 {
     0
 }
 
-pub fn try_fslat_exit(ctx: FExitContext, filpop: &str, ret: u64) -> Result<u32, u32> {
+pub fn try_fslat_exit(ctx: FExitContext, filpop: &str, ret: i64) -> Result<u32, u32> {
     let Some(countptr) = COUNTER.get_ptr_mut(0) else {
         return Err(1);
     };
@@ -267,6 +267,12 @@ pub fn try_fslat_exit(ctx: FExitContext, filpop: &str, ret: u64) -> Result<u32, 
 
     match unsafe { PTRLIST.get(pid_tgid) } {
         Some(entryrec) => {
+            // Skip failed calls for now
+            if ret < 0 {
+                let _  = PTRLIST.remove(&(pid_tgid));
+                return Err(1);
+            }
+            let ret = ret as u64;
             let now = unsafe { bpf_ktime_get_ns() };
             for idx in 0..NUM_PATH_PREFIX {
                 #[allow(static_mut_refs)]
