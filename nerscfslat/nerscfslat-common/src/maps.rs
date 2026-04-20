@@ -2,7 +2,7 @@ use aya_ebpf::{
     bindings::{bpf_dynptr, bpf_spin_lock},
     btf_maps,
     macros::{btf_map, map},
-    maps::{Array, HashMap, PerCpuArray, RingBuf},
+    maps::{Array, LruHashMap, PerCpuArray, RingBuf},
     programs::FEntryContext,
 };
 use bare_metal_modulo::ModNumC;
@@ -29,7 +29,7 @@ pub static PATHBUFTMP: PerCpuArray<PathComponent> = PerCpuArray::with_max_entrie
 
 // Map to hold the entry time of function call. indexed by (pid, tgid)
 #[map]
-pub static PTRLIST: HashMap<PidTgid, EntryRec> = HashMap::with_max_entries(8192, 0);
+pub static PTRLIST: LruHashMap<PidTgid, EntryRec> = LruHashMap::with_max_entries(8192, 0);
 
 #[map]
 pub static LDMS_SHARED_STREAM: RingBuf = RingBuf::pinned(1024, 0);
