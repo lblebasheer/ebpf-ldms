@@ -48,6 +48,7 @@ pub struct PathComponent {
 }
 
 #[repr(C)]
+#[derive(Clone, Copy)]
 pub struct FsLatencyStats {
     pub lock: bpf_spin_lock,
     pub pathlen: u32,
@@ -58,6 +59,7 @@ pub struct FsLatencyStats {
     pub total_bytes: u64,
     pub count: u64,
     pub lastpublish: u64,
+    pub is_frozen: bool,
 }
 
 #[repr(C)]
@@ -71,7 +73,6 @@ pub struct EventFields<'a> {
     pub id: &'a str,
     pub monotonic: u64,
     pub seq: u64,
-    pub path_prefix: &'a [u8],
 }
 
 #[repr(C)]

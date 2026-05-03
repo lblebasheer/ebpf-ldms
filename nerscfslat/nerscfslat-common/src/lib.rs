@@ -33,7 +33,7 @@ pub fn try_fslat_entry(ctx: FEntryContext, _filpop: &str, file_arg_idx: usize) -
     let Some(pathbuf_ptr) = PATHBUF.get_ptr_mut(0) else {
         return Err(1);
     };
-    let mut ret = partial_d_path(&ctx, pathptr as *const vmlinux::path, pathbuf_ptr);
+    let ret = partial_d_path(&ctx, pathptr as *const vmlinux::path, pathbuf_ptr);
     if ret < 0 {
         return Err(1);
     }
@@ -44,10 +44,10 @@ pub fn try_fslat_entry(ctx: FEntryContext, _filpop: &str, file_arg_idx: usize) -
         };
         let _ = PTRLIST.insert(&(ctx.pid(), ctx.tgid()), &entryrec, 0u64);
     }
-    ret = ret.clamp(0, PATHFRAGLEN as i32);
-    trace!(ctx, "partial_path: {}", unsafe {
-        core::str::from_utf8_unchecked(&(*pathbuf_ptr).get_unchecked(..ret as usize))
-    });
+    // Assembled path has been copied from PATHBUFTMP
+    // into PATHBUF and in turn to EntryRec. Clear
+    // PATHBUFTMP and PATHBUF for the next call
+    unsafe { (*pathbuf_ptr).fill(0) };
     Ok(0)
 }
 
@@ -211,17 +211,16 @@ extern "C" fn assemble_pathfrag(index: u32, ctx: *mut AssembleCtx) -> u64 {
     // index into PATHBUFTMP ring buffer starting at the last path component written, which is
     // closest to the root
     let idx = unsafe { (*ctx).start } - index;
-    let Some(buf_elem) = PATHBUFTMP.get(idx.a()) else {
+    let Some(buf_elem) = PATHBUFTMP.get_ptr_mut(idx.a()) else {
         unsafe { debug!((*ctx).ctx, "bad index into PATHBUFTMP") };
         return 1;
     };
 
-    let path = &(*buf_elem).pathcomp as *const [u8] as *mut u8;
-    let len = buf_elem.len as u32;
-    let len = if buf_elem.len > PATHFRAGLEN {
+    let path = unsafe { &(*buf_elem).pathcomp as *const [u8] as *mut u8 };
+    let len = if unsafe { (*buf_elem).len } > PATHFRAGLEN {
         PATHFRAGLEN as u32
     } else {
-        len
+        unsafe { (*buf_elem).len as u32 }
     };
     unsafe {
         let copied = (*ctx).copied as u32;
@@ -242,7 +241,7 @@ extern "C" fn assemble_pathfrag(index: u32, ctx: *mut AssembleCtx) -> u64 {
             return 1;
         }
 
-        // Match on the penultimate pathname component
+        // Match on all but the last pathname component
         if index < ((*ctx).num_components - 1) {
             bpf_dynptr_write(
                 (*ctx).pathfrag_dynptr as *const bpf_dynptr,
@@ -255,6 +254,9 @@ extern "C" fn assemble_pathfrag(index: u32, ctx: *mut AssembleCtx) -> u64 {
         } else {
             (*ctx).copied = copied as u32 + remaining.min(len);
         }
+        // Component has been copied. Zero it for
+        // the next call into the _entry hook.
+        (*buf_elem).len = 0;
     }
     0
 }
@@ -269,7 +271,7 @@ pub fn try_fslat_exit(ctx: FExitContext, filpop: &str, ret: i64) -> Result<u32, 
         Some(entryrec) => {
             // Skip failed calls for now
             if ret < 0 {
-                let _  = PTRLIST.remove(&(pid_tgid));
+                let _ = PTRLIST.remove(&(pid_tgid));
                 return Err(1);
             }
             let ret = ret as u64;
@@ -277,7 +279,7 @@ pub fn try_fslat_exit(ctx: FExitContext, filpop: &str, ret: i64) -> Result<u32, 
             for idx in 0..NUM_PATH_PREFIX {
                 #[allow(static_mut_refs)]
                 let Some(fsstat) = (unsafe { FSLATENCYSTATS.get_ptr_mut(idx) }) else {
-                    return Err(1);
+                    break;
                 };
                 if unsafe {
                     starts_with(
@@ -286,33 +288,54 @@ pub fn try_fslat_exit(ctx: FExitContext, filpop: &str, ret: i64) -> Result<u32, 
                         (*fsstat).pathlen as usize,
                     )
                 } {
+                    trace!(ctx, "partial_path: {}", unsafe {
+                        core::str::from_utf8_unchecked(&(entryrec.path))
+                    });
                     if now - unsafe { (*fsstat).lastpublish } > AGG_INTERVAL {
+                        unsafe {
+                            bpf_spin_lock(&mut (*fsstat).lock);
+                            if (*fsstat).is_frozen {
+                                // Some thread is already in the process of sending snapshot
+                                bpf_spin_unlock(&mut (*fsstat).lock);
+                                break;
+                            } else {
+                                (*fsstat).is_frozen = true;
+                            }
+                            bpf_spin_unlock(&mut (*fsstat).lock);
+                        }
                         let eventf = EventFields {
                             id: "fslat/v2",
-                            monotonic: unsafe { bpf_ktime_get_ns() },
+                            monotonic: now,
                             seq: unsafe { *countptr },
-                            path_prefix: unsafe { &(*fsstat).path_prefix },
                         };
 
                         if update_stats(fsstat, entryrec.timestamp, now, ret) != 0 {
                             error!(ctx, "update_stats() failed");
-                            return Err(1);
+                            break;
                         }
                         let Ok(_) = ringbuf_put(&eventf, fsstat, filpop, "ns") else {
                             error!(ctx, "ringbuf_put() failed");
-                            return Err(1);
+                            break;
                         };
-                        let Ok(_) = clear_stats(&ctx, fsstat, now) else {
+                        let Ok(_) = clear_stats_and_unfreeze(&ctx, fsstat, now) else {
                             error!(ctx, "clear_stats() failed");
-                            return Err(1);
+                            break;
                         };
                         unsafe {
                             *countptr += 1;
                         }
                     } else {
+                        unsafe {
+                            bpf_spin_lock(&mut (*fsstat).lock);
+                            if (*fsstat).is_frozen {
+                                bpf_spin_unlock(&mut (*fsstat).lock);
+                                break;
+                            }
+                            bpf_spin_unlock(&mut (*fsstat).lock);
+                        }
                         if update_stats(fsstat, entryrec.timestamp, now, ret) != 0 {
                             error!(ctx, "update_stats() failed");
-                            return Err(1);
+                            break;
                         }
                     }
                 }
@@ -342,7 +365,11 @@ pub fn update_stats(fsstat: *mut FsLatencyStats, start: u64, end: u64, bytes: u6
     0
 }
 
-pub fn clear_stats(_ctx: &FExitContext, fsstat: *mut FsLatencyStats, now: u64) -> Result<u32, u32> {
+pub fn clear_stats_and_unfreeze(
+    _ctx: &FExitContext,
+    fsstat: *mut FsLatencyStats,
+    now: u64,
+) -> Result<u32, u32> {
     unsafe {
         bpf_spin_lock(&mut (*fsstat).lock);
         (*fsstat).lastpublish = now;
@@ -354,6 +381,7 @@ pub fn clear_stats(_ctx: &FExitContext, fsstat: *mut FsLatencyStats, now: u64) -
         write_volatile(&raw mut (*fsstat).total_lat, 0);
         write_volatile(&raw mut (*fsstat).total_bytes, 0);
         write_volatile(&raw mut (*fsstat).count, 0);
+        write_volatile(&raw mut (*fsstat).is_frozen, false);
         bpf_spin_unlock(&mut (*fsstat).lock);
     }
     Ok(0)
@@ -370,19 +398,11 @@ pub fn ringbuf_put(
         return Err(1);
     };
 
-    let EventFields {
-        id,
-        monotonic,
-        seq,
-        path_prefix,
-    } = *eventf;
+    let EventFields { id, monotonic, seq } = *eventf;
+
     let dataent_bytes: *mut [u8] = dataent.as_mut_ptr();
     let mut encoder = unsafe { Encoder::new(&mut *dataent_bytes) };
-    let pathlen = unsafe { (*fsstat).pathlen as usize };
-    if !aya_ebpf::check_bounds_signed(pathlen as i64, 1i64, PATHFRAGLEN as i64) {
-        dataent.discard(0u64);
-        return Err(1);
-    }
+    let pathlen = unsafe { (*fsstat).pathlen } as usize;
     unsafe {
         encoder
             .begin_map()
@@ -440,7 +460,9 @@ pub fn ringbuf_put(
             .str_noncanonical("path_prefix")
             .unwrap_unchecked()
             .str_noncanonical(core::str::from_utf8_unchecked(
-                path_prefix.get_unchecked(..pathlen),
+                (*fsstat)
+                    .path_prefix
+                    .get_unchecked(..pathlen.min(PATHFRAGLEN)),
             ))
             .unwrap_unchecked()
             .end()
