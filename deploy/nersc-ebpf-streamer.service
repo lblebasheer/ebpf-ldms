@@ -20,7 +20,7 @@ ExecStart = /usr/sbin/ebpf_streamer \
                 --authentication ${EBPF_STREAMER_LDMSD_AUTH} \
                 --hostname %H
 ExecStopPost = rm /sys/fs/bpf/LDMS_SHARED_STREAM
-TimeoutStartSec=1800
+TimeoutStartSec=infinity
 
 [Install]
 WantedBy = nersc-ready.target
