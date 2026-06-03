@@ -292,33 +292,40 @@ pub fn try_fslat_exit(ctx: FExitContext, filpop: &str, ret: i64) -> Result<u32, 
                         core::str::from_utf8_unchecked(&(entryrec.path))
                     });
                     if now - unsafe { (*fsstat).lastpublish } > AGG_INTERVAL {
+                        let snapshot: StatsSnapshot;
+                        let eventf: EventFields;
                         unsafe {
                             bpf_spin_lock(&mut (*fsstat).lock);
                             if (*fsstat).is_frozen {
-                                // Some thread is already in the process of sending snapshot
                                 bpf_spin_unlock(&mut (*fsstat).lock);
                                 break;
-                            } else {
-                                (*fsstat).is_frozen = true;
                             }
+                            (*fsstat).is_frozen = true;
+
+                            update_stats_locked(fsstat, now - entryrec.timestamp, ret);
+
+                            snapshot = StatsSnapshot {
+                                pathlen: (*fsstat).pathlen,
+                                path_prefix: (*fsstat).path_prefix,
+                                min: (*fsstat).min,
+                                max: (*fsstat).max,
+                                total_lat: (*fsstat).total_lat,
+                                total_bytes: (*fsstat).total_bytes,
+                                count: (*fsstat).count,
+                            };
+
+                            clear_and_unfreeze_locked(fsstat, now);
+
+                            eventf = EventFields {
+                                id: "fslat/v2",
+                                monotonic: now,
+                                seq: *countptr,
+                            };
                             bpf_spin_unlock(&mut (*fsstat).lock);
                         }
-                        let eventf = EventFields {
-                            id: "fslat/v2",
-                            monotonic: now,
-                            seq: unsafe { *countptr },
-                        };
 
-                        if update_stats(fsstat, entryrec.timestamp, now, ret) != 0 {
-                            error!(ctx, "update_stats() failed");
-                            break;
-                        }
-                        let Ok(_) = ringbuf_put(&eventf, fsstat, filpop, "ns") else {
+                        let Ok(_) = ringbuf_put(&eventf, &snapshot, filpop, "ns") else {
                             error!(ctx, "ringbuf_put() failed");
-                            break;
-                        };
-                        let Ok(_) = clear_stats_and_unfreeze(&ctx, fsstat, now) else {
-                            error!(ctx, "clear_stats() failed");
                             break;
                         };
                         unsafe {
@@ -331,11 +338,8 @@ pub fn try_fslat_exit(ctx: FExitContext, filpop: &str, ret: i64) -> Result<u32, 
                                 bpf_spin_unlock(&mut (*fsstat).lock);
                                 break;
                             }
+                            update_stats_locked(fsstat, now - entryrec.timestamp, ret);
                             bpf_spin_unlock(&mut (*fsstat).lock);
-                        }
-                        if update_stats(fsstat, entryrec.timestamp, now, ret) != 0 {
-                            error!(ctx, "update_stats() failed");
-                            break;
                         }
                     }
                 }
@@ -347,10 +351,9 @@ pub fn try_fslat_exit(ctx: FExitContext, filpop: &str, ret: i64) -> Result<u32, 
     Ok(0)
 }
 
-pub fn update_stats(fsstat: *mut FsLatencyStats, start: u64, end: u64, bytes: u64) -> u32 {
+/// Caller must hold fsstat's spinlock.
+pub unsafe fn update_stats_locked(fsstat: *mut FsLatencyStats, latency: u64, bytes: u64) {
     unsafe {
-        let latency = end - start;
-        bpf_spin_lock(&mut (*fsstat).lock);
         if latency < (*fsstat).min || (*fsstat).min == 0 {
             (*fsstat).min = latency;
         }
@@ -360,18 +363,12 @@ pub fn update_stats(fsstat: *mut FsLatencyStats, start: u64, end: u64, bytes: u6
         (*fsstat).count += 1;
         (*fsstat).total_lat += latency;
         (*fsstat).total_bytes += bytes;
-        bpf_spin_unlock(&mut (*fsstat).lock);
     }
-    0
 }
 
-pub fn clear_stats_and_unfreeze(
-    _ctx: &FExitContext,
-    fsstat: *mut FsLatencyStats,
-    now: u64,
-) -> Result<u32, u32> {
+/// Caller must hold fsstat's spinlock.
+pub unsafe fn clear_and_unfreeze_locked(fsstat: *mut FsLatencyStats, now: u64) {
     unsafe {
-        bpf_spin_lock(&mut (*fsstat).lock);
         (*fsstat).lastpublish = now;
         (*fsstat).min = u64::MAX;
         (*fsstat).max = u64::MIN;
@@ -382,14 +379,12 @@ pub fn clear_stats_and_unfreeze(
         write_volatile(&raw mut (*fsstat).total_bytes, 0);
         write_volatile(&raw mut (*fsstat).count, 0);
         write_volatile(&raw mut (*fsstat).is_frozen, false);
-        bpf_spin_unlock(&mut (*fsstat).lock);
     }
-    Ok(0)
 }
 
 pub fn ringbuf_put(
     eventf: &EventFields,
-    fsstat: *mut FsLatencyStats,
+    snapshot: &StatsSnapshot,
     filpop: &str,
     unit: &str,
 ) -> Result<u32, u32> {
@@ -402,7 +397,7 @@ pub fn ringbuf_put(
 
     let dataent_bytes: *mut [u8] = dataent.as_mut_ptr();
     let mut encoder = unsafe { Encoder::new(&mut *dataent_bytes) };
-    let pathlen = unsafe { (*fsstat).pathlen } as usize;
+    let pathlen = snapshot.pathlen as usize;
     unsafe {
         encoder
             .begin_map()
@@ -433,23 +428,23 @@ pub fn ringbuf_put(
             .unwrap_unchecked()
             .str_noncanonical("min_latency")
             .unwrap_unchecked()
-            .u64_noncanonical((*fsstat).min)
+            .u64_noncanonical(snapshot.min)
             .unwrap_unchecked()
             .str_noncanonical("max_latency")
             .unwrap_unchecked()
-            .u64_noncanonical((*fsstat).max)
+            .u64_noncanonical(snapshot.max)
             .unwrap_unchecked()
             .str_noncanonical("total_latency")
             .unwrap_unchecked()
-            .u64_noncanonical((*fsstat).total_lat)
+            .u64_noncanonical(snapshot.total_lat)
             .unwrap_unchecked()
             .str_noncanonical("total_bytes")
             .unwrap_unchecked()
-            .u64_noncanonical((*fsstat).total_bytes)
+            .u64_noncanonical(snapshot.total_bytes)
             .unwrap_unchecked()
             .str_noncanonical("count_samples")
             .unwrap_unchecked()
-            .u64_noncanonical((*fsstat).count)
+            .u64_noncanonical(snapshot.count)
             .unwrap_unchecked()
             .str_noncanonical("aggregation_time")
             .unwrap_unchecked()
@@ -460,7 +455,7 @@ pub fn ringbuf_put(
             .str_noncanonical("path_prefix")
             .unwrap_unchecked()
             .str_noncanonical(core::str::from_utf8_unchecked(
-                (*fsstat)
+                snapshot
                     .path_prefix
                     .get_unchecked(..pathlen.min(PATHFRAGLEN)),
             ))

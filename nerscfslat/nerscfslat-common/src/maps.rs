@@ -76,6 +76,18 @@ pub struct EventFields<'a> {
 }
 
 #[repr(C)]
+#[derive(Clone, Copy)]
+pub struct StatsSnapshot {
+    pub pathlen: u32,
+    pub path_prefix: PathSlice,
+    pub min: u64,
+    pub max: u64,
+    pub total_lat: u64,
+    pub total_bytes: u64,
+    pub count: u64,
+}
+
+#[repr(C)]
 pub struct AssembleCtx<'a> {
     pub start: ModNumC<u32, { NUM_COMP as usize }>,
     pub copied: u32,
