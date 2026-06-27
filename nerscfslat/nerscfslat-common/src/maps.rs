@@ -13,10 +13,31 @@ use crate::constants::*;
 #[map]
 pub static COUNTER: Array<u64> = Array::with_max_entries(1, 0);
 
-// Map per ebpf program. One array entry for each prefix that contains prefix itself and collected
+// Map per VFS function. One array entry for each prefix that contains prefix itself and collected
 // stats
 #[btf_map]
-pub static mut FSLATENCYSTATS: btf_maps::Array<FsLatencyStats, { NUM_PATH_PREFIX as usize }, 0> =
+pub static mut CLOSE_STATS: btf_maps::Array<FsLatencyStats, { NUM_PATH_PREFIX as usize }, 0> =
+    btf_maps::Array::new();
+#[btf_map]
+pub static mut FSYNC_STATS: btf_maps::Array<FsLatencyStats, { NUM_PATH_PREFIX as usize }, 0> =
+    btf_maps::Array::new();
+#[btf_map]
+pub static mut WRITE_STATS: btf_maps::Array<FsLatencyStats, { NUM_PATH_PREFIX as usize }, 0> =
+    btf_maps::Array::new();
+#[btf_map]
+pub static mut WRITEV_STATS: btf_maps::Array<FsLatencyStats, { NUM_PATH_PREFIX as usize }, 0> =
+    btf_maps::Array::new();
+#[btf_map]
+pub static mut ITER_WRITE_STATS: btf_maps::Array<FsLatencyStats, { NUM_PATH_PREFIX as usize }, 0> =
+    btf_maps::Array::new();
+#[btf_map]
+pub static mut READ_STATS: btf_maps::Array<FsLatencyStats, { NUM_PATH_PREFIX as usize }, 0> =
+    btf_maps::Array::new();
+#[btf_map]
+pub static mut READV_STATS: btf_maps::Array<FsLatencyStats, { NUM_PATH_PREFIX as usize }, 0> =
+    btf_maps::Array::new();
+#[btf_map]
+pub static mut ITER_READ_STATS: btf_maps::Array<FsLatencyStats, { NUM_PATH_PREFIX as usize }, 0> =
     btf_maps::Array::new();
 
 // Used as a scratch area to hold the assembled path constructed by partial_d_path() from struct path

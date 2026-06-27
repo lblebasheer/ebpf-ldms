@@ -3,14 +3,7 @@ resolver = "2"
 members = [
     "nerscfslat",
     "nerscfslat-common",
-    "nerscfslat-ebpf-close",
-    "nerscfslat-ebpf-fsync",
-    "nerscfslat-ebpf-iterread",
-    "nerscfslat-ebpf-iterwrite",
-    "nerscfslat-ebpf-read",
-    "nerscfslat-ebpf-readv",
-    "nerscfslat-ebpf-writev",
-    "nerscfslat-ebpf-write",
+    "nerscfslat-ebpf",
 ]
 default-members = ["nerscfslat", "nerscfslat-common"]
 
@@ -34,75 +27,11 @@ smol = { version = "2", default-features = false }
 ctrlc = { version = "3", default-features = false, features = ["termination"] }
 which = { version = "6.0.0", default-features = false }
 
-[profile.release.package.nerscfslat-ebpf-iterread]
+[profile.release.package.nerscfslat-ebpf]
 debug = 2
 codegen-units = 1
 
-[profile.dev.package.nerscfslat-ebpf-iterread]
-debug = "full"
-codegen-units = 1
-opt-level = 0
-
-[profile.release.package.nerscfslat-ebpf-iterwrite]
-debug = 2
-codegen-units = 1
-
-[profile.dev.package.nerscfslat-ebpf-iterwrite]
-debug = "full"
-codegen-units = 1
-opt-level = 0
-
-[profile.release.package.nerscfslat-ebpf-read]
-debug = 2
-codegen-units = 1
-
-[profile.dev.package.nerscfslat-ebpf-read]
-debug = "full"
-codegen-units = 1
-opt-level = 0
-
-[profile.release.package.nerscfslat-ebpf-readv]
-debug = 2
-codegen-units = 1
-
-[profile.dev.package.nerscfslat-ebpf-readv]
-debug = "full"
-codegen-units = 1
-opt-level = 0
-
-[profile.release.package.nerscfslat-ebpf-close]
-debug = 2
-codegen-units = 1
-opt-level = 0
-
-[profile.dev.package.nerscfslat-ebpf-close]
-debug = "full"
-codegen-units = 1
-opt-level = 0
-
-[profile.release.package.nerscfslat-ebpf-fsync]
-debug = 2
-codegen-units = 1
-
-[profile.dev.package.nerscfslat-ebpf-fsync]
-debug = "full"
-codegen-units = 1
-opt-level = 0
-
-[profile.release.package.nerscfslat-ebpf-writev]
-debug = 2
-codegen-units = 1
-
-[profile.dev.package.nerscfslat-ebpf-writev]
-debug = "full"
-codegen-units = 1
-opt-level = 0
-
-[profile.release.package.nerscfslat-ebpf-write]
-debug = 2
-codegen-units = 1
-
-[profile.dev.package.nerscfslat-ebpf-write]
+[profile.dev.package.nerscfslat-ebpf]
 debug = "full"
 codegen-units = 1
 opt-level = 0

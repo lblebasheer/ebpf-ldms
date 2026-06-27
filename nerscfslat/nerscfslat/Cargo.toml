@@ -1,6 +1,6 @@
 [package]
 name = "nerscfslat"
-version = "0.12.5"
+version = "0.13.0"
 edition.workspace = true
 
 license.workspace = true
@@ -32,10 +32,7 @@ cargo_metadata = { workspace = true }
 # Finally note that *any* usage of `artifact = ...` in *any* Cargo.toml in the workspace breaks
 # workflows with stable cargo; stable cargo outright refuses to load manifests that use unstable
 # features.
-nerscfslat-ebpf-close = { path = "../nerscfslat-ebpf-close" }
-nerscfslat-ebpf-fsync = { path = "../nerscfslat-ebpf-fsync" }
-nerscfslat-ebpf-write = { path = "../nerscfslat-ebpf-write" }
-nerscfslat-ebpf-writev = { path = "../nerscfslat-ebpf-writev" }
+nerscfslat-ebpf = { path = "../nerscfslat-ebpf" }
 
 [[bin]]
 name = "nerscfslat"
