@@ -28,16 +28,10 @@ pub static mut WRITE_STATS: btf_maps::Array<FsLatencyStats, { NUM_PATH_PREFIX as
 pub static mut WRITEV_STATS: btf_maps::Array<FsLatencyStats, { NUM_PATH_PREFIX as usize }, 0> =
     btf_maps::Array::new();
 #[btf_map]
-pub static mut ITER_WRITE_STATS: btf_maps::Array<FsLatencyStats, { NUM_PATH_PREFIX as usize }, 0> =
-    btf_maps::Array::new();
-#[btf_map]
 pub static mut READ_STATS: btf_maps::Array<FsLatencyStats, { NUM_PATH_PREFIX as usize }, 0> =
     btf_maps::Array::new();
 #[btf_map]
 pub static mut READV_STATS: btf_maps::Array<FsLatencyStats, { NUM_PATH_PREFIX as usize }, 0> =
-    btf_maps::Array::new();
-#[btf_map]
-pub static mut ITER_READ_STATS: btf_maps::Array<FsLatencyStats, { NUM_PATH_PREFIX as usize }, 0> =
     btf_maps::Array::new();
 
 // Used as a scratch area to hold the assembled path constructed by partial_d_path() from struct path

@@ -99,13 +99,15 @@ fn main() -> anyhow::Result<()> {
 
     let probes = [
         ("filp_close_entry", "filp_close_exit", "filp_close"),
-        ("vfs_fsync_range_entry", "vfs_fsync_range_exit", "vfs_fsync_range"),
+        (
+            "vfs_fsync_range_entry",
+            "vfs_fsync_range_exit",
+            "vfs_fsync_range",
+        ),
         ("vfs_write_entry", "vfs_write_exit", "vfs_write"),
         ("vfs_writev_entry", "vfs_writev_exit", "vfs_writev"),
-        ("vfs_iter_write_entry", "vfs_iter_write_exit", "vfs_iter_write"),
         ("vfs_read_entry", "vfs_read_exit", "vfs_read"),
         ("vfs_readv_entry", "vfs_readv_exit", "vfs_readv"),
-        ("vfs_iter_read_entry", "vfs_iter_read_exit", "vfs_iter_read"),
     ];
 
     for (entry, exit, fn_name) in &probes {
