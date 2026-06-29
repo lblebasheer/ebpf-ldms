@@ -1,6 +1,6 @@
 [package]
 name = "nerscfslat"
-version = "0.13.0"
+version.workspace = true
 edition.workspace = true
 
 license.workspace = true

@@ -693,7 +693,7 @@ dependencies = [
 
 [[package]]
 name = "ebpf_streamer"
-version = "0.11.0"
+version = "0.14.0"
 dependencies = [
  "anyhow",
  "async-channel 2.5.0",
@@ -1021,7 +1021,7 @@ dependencies = [
 
 [[package]]
 name = "ldms_stream"
-version = "0.1.0"
+version = "0.14.0"
 dependencies = [
  "anyhow",
 ]
@@ -1113,7 +1113,7 @@ dependencies = [
 
 [[package]]
 name = "nerscfslat"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "anyhow",
  "aya",
@@ -1131,7 +1131,7 @@ dependencies = [
 
 [[package]]
 name = "nerscfslat-common"
-version = "0.1.0"
+version = "0.14.0"
 dependencies = [
  "aya",
  "aya-ebpf",
@@ -1142,7 +1142,7 @@ dependencies = [
 
 [[package]]
 name = "nerscfslat-ebpf"
-version = "0.1.0"
+version = "0.14.0"
 dependencies = [
  "aya-ebpf",
  "nerscfslat-common",
