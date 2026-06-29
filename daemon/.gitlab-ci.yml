@@ -1,0 +1,124 @@
+stages:
+  - build
+  - package
+
+variables:
+  CARGO_HOME: ${CI_PROJECT_DIR}/.cargo
+  RUSTUP_HOME: ${CI_PROJECT_DIR}/.rustup
+  PATH: ${CARGO_HOME}/bin:${PATH}
+  LDMS_PREFIX: /usr/local
+  ENTRYPOINT: ""
+
+cache:
+  key: ${CI_JOB_NAME}
+  paths:
+    - .cargo/
+    - .rustup/
+    - target/
+    - ldms-install/
+
+build-and-package:
+  stage: build
+  image: registry.suse.com/suse/sle15:15.5
+  before_script:
+    # Update package repositories
+    - zypper --non-interactive refresh
+    
+    # Install build dependencies for both LDMS and Rust/aya
+    - zypper --non-interactive install -y 
+        gcc
+        gcc-c++
+        make
+        automake
+        autoconf
+        libtool
+        clang
+        llvm
+        llvm-devel
+        libbpf-devel
+        kernel-devel
+        kernel-default-devel
+        elfutils-devel
+        zlib-devel
+        curl
+        tar
+        gzip
+        rpm-build
+        git
+        python3
+        python3-devel
+        flex
+        bison
+        openssl-devel
+        libevent-devel
+        readline-devel
+        gettext-tools
+        pkg-config
+        glib2-devel
+    
+    # Build and install LDMS 4.4.2 from source
+    - git clone https://github.com/ovis-hpc/ldms.git
+    - cd ldms
+    - git checkout v4.4.2
+    - ./autogen.sh
+    - mkdir build
+    - cd build
+    - ../configure --prefix=${LDMS_PREFIX} 
+        --enable-python 
+        --enable-ldms-python 
+        --enable-munge 
+        --disable-rpath
+    - make -j$(nproc)
+    - make install
+    - ldconfig
+    - cd ${CI_PROJECT_DIR}
+    
+    # Add LDMS to PATH and library path
+    - export PATH=${LDMS_PREFIX}/bin:${LDMS_PREFIX}/sbin:${PATH}
+    - export LD_LIBRARY_PATH=${LDMS_PREFIX}/lib:${LDMS_PREFIX}/lib64:${LD_LIBRARY_PATH}
+    - export PKG_CONFIG_PATH=${LDMS_PREFIX}/lib/pkgconfig:${LDMS_PREFIX}/lib64/pkgconfig:${PKG_CONFIG_PATH}
+    
+    # Install Rust using rustup with both stable and nightly toolchains
+    - curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+    - source ${CARGO_HOME}/env
+    
+    # Install nightly toolchain
+    - rustup install nightly
+    - rustup default nightly
+    
+    # Add required components for nightly
+    - rustup component add rust-src --toolchain nightly
+    - rustup component add rustfmt --toolchain nightly
+    - rustup component add clippy --toolchain nightly
+    
+    # Install required cargo extensions using stable for cargo-generate-rpm
+    - rustup run stable cargo install cargo-generate-rpm
+    
+    # Install bpf-linker using nightly
+    - cargo install bpf-linker
+    
+    # Set up targets for BPF programs on nightly
+    - rustup target add bpfel-unknown-none --toolchain nightly
+    - rustup target add bpfeb-unknown-none --toolchain nightly
+    - rustup target add x86_64-unknown-linux-musl --toolchain nightly
+
+  script:
+    # Set LDMS environment variables for the build
+    - export PATH=${LDMS_PREFIX}/bin:${LDMS_PREFIX}/sbin:${PATH}
+    - export LD_LIBRARY_PATH=${LDMS_PREFIX}/lib:${LDMS_PREFIX}/lib64:${LD_LIBRARY_PATH}
+    - export PKG_CONFIG_PATH=${LDMS_PREFIX}/lib/pkgconfig:${LDMS_PREFIX}/lib64/pkgconfig:${PKG_CONFIG_PATH}
+    
+    # Build the eBPF program (if separate)
+    - cargo xtask build-ebpf --release || true  # Some projects use xtask for eBPF building
+    
+    # Build the main project with nightly
+    - cargo +nightly build --release
+    
+    # Generate RPM package (using stable toolchain for cargo-generate-rpm)
+    - rustup run stable cargo generate-rpm
+
+  artifacts:
+    paths:
+      - target/release/*
+      - target/generate-rpm/*.rpm
+    expire_in: 1 week

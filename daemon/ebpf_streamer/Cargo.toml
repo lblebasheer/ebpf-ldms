@@ -1,0 +1,119 @@
+[package]
+name = "ebpf_streamer"
+version = "0.11.0"
+authors = ["Ershaad Basheer <ebasheer@lbl.gov>"]
+description = "Daemon that relays eBPF generated messages to LDMS"
+edition = "2021"
+
+license.workspace = true
+
+[dependencies]
+anyhow = { workspace = true, default-features = true }
+aya = { workspace = true }
+aya-log = { workspace = true }
+libc = { workspace = true }
+log = { workspace = true }
+smol = "1.3.0"
+ctrlc = "3.4.7"
+time = "0.3.41"
+async-io = "1.13.0"
+async-channel = "2.3.1"
+nix = { version = "0.30.1", features = ["time"] }
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.140"
+serde-transcode = "1.1.1"
+minicbor-serde = "0.5.0"
+minicbor = { version = "1.0.0", features = ["derive"] }
+clap = { version = "4.5.40", features = ["derive"] }
+ciborium = "0.2.2"
+ldms_stream = { version = "0.1.0", path = "../ldms_stream" }
+ftail = "0.3.1"
+burster = "0.1.2"
+[build-dependencies]
+anyhow = { workspace = true }
+aya-build = { workspace = true }
+
+[[bin]]
+name = "ebpf_streamer"
+path = "src/main.rs"
+
+[package.metadata.generate-rpm]
+name = "ebpf_streamer"
+license = "MIT OR Apache-2.0"
+summary = "Daemon that streams ebpf-generated data to LDMS"
+auto-req = "disabled"
+assets = [
+    { source = "target/release/ebpf_streamer", dest = "/usr/sbin/ebpf_streamer", mode = "755" },
+    { source = "deploy/nersc-ebpf-streamer.service", dest = "/etc/systemd/system/nersc-ebpf-streamer.service", mode = "644" },
+    { source = "deploy/ebpf_streamer", dest = "/etc/sysconfig/ebpf_streamer", mode = "644", config = "noreplace" },
+]
+post_install_script = """\
+    if [ -x /usr/bin/systemctl ]; then
+            test -n "$FIRST_ARG" || FIRST_ARG="$1"
+            [ -d /var/lib/systemd/migrated ] || mkdir -p /var/lib/systemd/migrated || :
+
+            if [ "$YAST_IS_RUNNING" != "instsys" ]; then
+                    /usr/bin/systemctl daemon-reload || :
+            fi
+            for service in nersc-ebpf-streamer.service ; do
+                    sysv_service=${service%.*}
+
+                    if [ -e /run/systemd/rpm/needs-preset/$service ]; then
+                            /usr/bin/systemctl preset $service || :
+                            rm "/run/systemd/rpm/needs-preset/$service" || :
+
+                    elif [ -e /run/systemd/rpm/needs-sysv-convert/$service ]; then
+                            /usr/sbin/systemd-sysv-convert --apply $sysv_service || :
+                            rm "/run/systemd/rpm/needs-sysv-convert/$service" || :
+                            touch /var/lib/systemd/migrated/$sysv_service || :
+                    fi
+            done
+    fi
+    """
+pre_uninstall_script = """\
+    test -n "$FIRST_ARG" || FIRST_ARG="$1"
+    if [ "$FIRST_ARG" -eq 0 -a -x /usr/bin/systemctl ]; then
+            # Package removal, not upgrade
+            /usr/bin/systemctl --no-reload disable nersc-ebpf-streamer.service || :
+            (
+                    test "$YAST_IS_RUNNING" = instsys && exit 0
+                    test -f /etc/sysconfig/services -a \
+                         -z "$DISABLE_STOP_ON_REMOVAL" && . /etc/sysconfig/services
+                    test "$DISABLE_STOP_ON_REMOVAL" = yes -o \
+                         "$DISABLE_STOP_ON_REMOVAL" = 1 && exit 0
+                    /usr/bin/systemctl stop nersc-ebpf-streamer.service
+            ) || :
+    fi
+    """
+post_uninstall_script = """\
+    test -n "$FIRST_ARG" || FIRST_ARG="$1"
+
+    if [ $1 -eq 0 ]; then
+            # Package removal
+            for service in nersc-ebpf-streamer.service ; do
+                    sysv_service="${service%.*}"
+                    rm -f "/var/lib/systemd/migrated/$sysv_service" || :
+            done
+    fi
+    if [ -x /usr/bin/systemctl ]; then
+            /usr/bin/systemctl daemon-reload || :
+    fi
+
+    if [ "$FIRST_ARG" -ge 1 ]; then
+            # Package upgrade, not uninstall
+            if [ -x /usr/bin/systemctl ]; then
+                    (
+                            test "$YAST_IS_RUNNING" = instsys && exit 0
+                            test -f /etc/sysconfig/services -a \
+                                 -z "$DISABLE_RESTART_ON_UPDATE" && . /etc/sysconfig/services
+                            test "$DISABLE_RESTART_ON_UPDATE" = yes -o \
+                                 "$DISABLE_RESTART_ON_UPDATE" = 1 && exit 0
+                            /usr/bin/systemctl try-restart nersc-ebpf-streamer.service
+                    ) || :
+            fi
+    fi
+    """
+
+[package.metadata.generate-rpm.requires]
+ovis-ldms = ">= 4.4"
+bpftool = "*"
