@@ -1,0 +1,34 @@
+[workspace]
+resolver = "2"
+members = [
+    "daemon/ebpf_streamer",
+    "daemon/ldms_stream",
+    "producers/fslatency/nerscfslat/nerscfslat",
+    "producers/fslatency/nerscfslat/nerscfslat-common",
+]
+default-members = [
+    "daemon/ebpf_streamer",
+    "producers/fslatency/nerscfslat/nerscfslat",
+]
+
+[workspace.package]
+license = "MIT OR Apache-2.0"
+edition = "2024"
+
+[workspace.dependencies]
+aya = { git = "https://github.com/aya-rs/aya", branch = "main", default-features = false }
+aya-build = { git = "https://github.com/aya-rs/aya", branch = "main", default-features = false }
+aya-ebpf = { git = "https://github.com/aya-rs/aya", branch = "main", default-features = false }
+aya-log = { git = "https://github.com/aya-rs/aya", branch = "main", default-features = false }
+aya-log-ebpf = { git = "https://github.com/aya-rs/aya", branch = "main", default-features = false }
+
+anyhow = { version = "1", default-features = false }
+cargo_metadata = { version = "0.23.0", default-features = false }
+env_logger = { version = "0.11.5", default-features = false }
+libc = { version = "0.2.159", default-features = false }
+log = { version = "0.4.22", default-features = false }
+smol = { version = "2", default-features = false }
+ctrlc = { version = "3", default-features = false, features = ["termination"] }
+which = { version = "6.0.0", default-features = false }
+
+

@@ -3,7 +3,7 @@ name = "ebpf_streamer"
 version = "0.11.0"
 authors = ["Ershaad Basheer <ebasheer@lbl.gov>"]
 description = "Daemon that relays eBPF generated messages to LDMS"
-edition = "2021"
+edition = "2024"
 
 license.workspace = true
 
@@ -44,8 +44,8 @@ summary = "Daemon that streams ebpf-generated data to LDMS"
 auto-req = "disabled"
 assets = [
     { source = "target/release/ebpf_streamer", dest = "/usr/sbin/ebpf_streamer", mode = "755" },
-    { source = "deploy/nersc-ebpf-streamer.service", dest = "/etc/systemd/system/nersc-ebpf-streamer.service", mode = "644" },
-    { source = "deploy/ebpf_streamer", dest = "/etc/sysconfig/ebpf_streamer", mode = "644", config = "noreplace" },
+    { source = "../deploy/nersc-ebpf-streamer.service", dest = "/etc/systemd/system/nersc-ebpf-streamer.service", mode = "644" },
+    { source = "../deploy/ebpf_streamer", dest = "/etc/sysconfig/ebpf_streamer", mode = "644", config = "noreplace" },
 ]
 post_install_script = """\
     if [ -x /usr/bin/systemctl ]; then

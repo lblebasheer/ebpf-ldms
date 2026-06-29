@@ -45,8 +45,8 @@ summary = "Measure latency of filesystem calls"
 auto-req = "disabled"
 assets = [
     { source = "target/release/nerscfslat", dest = "/usr/sbin/nerscfslat", mode = "755" },
-    { source = "deploy/nerscfslat_load_prefixes.sh", dest = "/usr/local/sbin/nerscfslat_load_prefixes.sh", mode = "755" },
-    { source = "deploy/nersc-ebpf-nerscfslat.service", dest = "/etc/systemd/system/nersc-ebpf-nerscfslat.service", mode = "644" },
+    { source = "../deploy/nerscfslat_load_prefixes.sh", dest = "/usr/local/sbin/nerscfslat_load_prefixes.sh", mode = "755" },
+    { source = "../deploy/nersc-ebpf-nerscfslat.service", dest = "/etc/systemd/system/nersc-ebpf-nerscfslat.service", mode = "644" },
 ]
 post_install_script = """\
     if [ -x /usr/bin/systemctl ]; then
