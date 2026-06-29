@@ -29,7 +29,20 @@ env_logger = { version = "0.11.5", default-features = false }
 libc = { version = "0.2.159", default-features = false }
 log = { version = "0.4.22", default-features = false }
 smol = { version = "2", default-features = false }
-ctrlc = { version = "3", default-features = false, features = ["termination"] }
 which = { version = "6.0.0", default-features = false }
+ctrlc = { version = "3", features = ["termination"] }
+time = "0.3.41"
+async-io = "1.13.0"
+async-channel = "2.3.1"
+nix = { version = "0.30.1", features = ["time"] }
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.140"
+serde-transcode = "1.1.1"
+minicbor-serde = "0.5.0"
+minicbor = { version = "1.0.0", features = ["derive"] }
+clap = { version = "4.5.40", features = ["derive"] }
+ciborium = "0.2.2"
+ftail = "0.3.1"
+burster = "0.1.2"
 
 
