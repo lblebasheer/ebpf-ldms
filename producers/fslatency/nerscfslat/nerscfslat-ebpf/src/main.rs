@@ -64,4 +64,4 @@ fn panic(_info: &core::panic::PanicInfo) -> ! {
 
 #[unsafe(link_section = "license")]
 #[unsafe(no_mangle)]
-static LICENSE: [u8; 13] = *b"Dual MIT/GPL\0";
+static LICENSE: [u8; 13] = *b"Dual BSD/GPL\0";

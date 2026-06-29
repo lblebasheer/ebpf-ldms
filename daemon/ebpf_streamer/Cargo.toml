@@ -39,7 +39,7 @@ path = "src/main.rs"
 
 [package.metadata.generate-rpm]
 name = "ebpf_streamer"
-license = "MIT OR Apache-2.0"
+license = "BSD-3-Clause"
 summary = "Daemon that streams ebpf-generated data to LDMS"
 auto-req = "disabled"
 assets = [

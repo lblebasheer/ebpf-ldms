@@ -169,4 +169,8 @@ the userspace binary.
 | `nerscfslat-ebpf-iterread` | eBPF probe for `vfs_iter_read`                           |
 
 ## License
-TBD
+
+Unless otherwise noted, this project is distributed under the terms of the
+[BSD 3-Clause License](LICENSE.txt) (also available at the repository root).
+
+See [`NOTICE.txt`](NOTICE.txt) for the full copyright notice.
