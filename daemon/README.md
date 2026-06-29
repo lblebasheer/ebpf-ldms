@@ -126,6 +126,6 @@ See [`NOTICE.txt`](NOTICE.txt) for the full copyright notice.
 
 ### eBPF
 
-The eBPF programs (in `producers/fslatency/nerscfslat/nerscfslat-ebpf/`)
+The eBPF programs (in `producers/fslatency/nerscfslat-ebpf/`)
 are distributed under the terms of `Dual BSD/GPL` for compatibility
 with the Linux kernel's eBPF verifier.

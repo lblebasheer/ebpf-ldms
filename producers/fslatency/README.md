@@ -171,6 +171,6 @@ the userspace binary.
 ## License
 
 Unless otherwise noted, this project is distributed under the terms of the
-[BSD 3-Clause License](LICENSE.txt) (also available at the repository root).
+[BSD 3-Clause License](../LICENSE.txt).
 
-See [`NOTICE.txt`](NOTICE.txt) for the full copyright notice.
+See [`../NOTICE.txt`](../NOTICE.txt) for the full copyright notice.
