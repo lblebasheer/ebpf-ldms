@@ -1,0 +1,874 @@
+# Contents
+
+- [minicbor](#minicbor)
+- [minicbor-derive](#minicbor-derive)
+- [minicbor-io](#minicbor-io)
+- [minicbor-serde](#minicbor-serde)
+
+# minicbor
+
+## `2.1.3`
+
+- Depends on `minicbor-derive-0.18.3`.
+
+## `2.1.2`
+
+- Replaces `build.rs` with `target_has_atomic`. See pull request
+  [#47](https://github.com/twittner/minicbor/pull/47) by @dtolnay for details.
+
+## `2.1.1`
+
+- Depends on `minicbor-derive-0.18.2`.
+
+## `2.1.0`
+
+- Added `Encoder::str_len`, mirroring `Encoder::bytes_len` which was added in 0.26.1.
+- Depends on `minicbor-derive-0.18.1`.
+
+## `2.0.0`
+
+- Depends on `minicbor-derive-0.18.0` (see below).
+- ⚠️ **Breaking** ⚠️ Several generic implementations of `Encode` and `Decode` did not override
+  the default `is_nil` and `nil` methods. As a result, if a type `T` implements `Encode` and
+  `Decode` with implementations of `is_nil` and `nil`, wrapping the type in a `Box` or
+  `Cell` or encoding it via reference would revert to the default implementation. This
+  has been fixed and the following impls now override the defaults:
+
+    + `&T`
+    + `&mut T`
+    + `Box<T>`
+    + `Cow<'_, T>`
+    + `Cell<T>`
+    + `RefCell<T>`
+
+  With this fix, these types have a nil value if `T` has one whereas prior versions would not.
+- The `Encode` implementation of `RefCell` no longer uses `try_borrow`, but `borrow`.
+
+## `1.1.0`
+
+- Adds `encode::Error::{as_write, into_write}` to allow easier access to an error caused by
+  a `Write` implementation.
+
+## `1.0.0`
+
+- Updated to 2024 edition.
+
+## `0.26.5`
+
+- Add `encode::write::Cursor::set_position`.
+
+## `0.26.4`
+
+- Implementations of `Iterator::size_hint` for `decode::{ArrayIter, ArrayIterWithCtx},
+  `decode::{MapIter, MapIterWithCtx}` and `decode::{BytesIter, StrIter}` (see pull request
+  [#27](https://github.com/twittner/minicbor/pull/27) by @carloskiki for details).
+- Fixes an issue with `decode::{BytesIter, StrIter}`, both of which would yield `None` for
+  definite but empty bytes or text. They now yield `Some(&[])` or `Some("")` respectively.
+  Note that the behaviour for non-empty definite bytes or text values and for indefinite ones
+  does not change.
+- Implements `EncodeBytes`, `DecodeBytes` and `CborLenBytes` for `Box<[u8]>` (see pull request
+  [#28](https://github.com/twittner/minicbor/pull/28) by @carloskiki for details).
+
+## `0.26.3`
+
+- Depends on `minicbor-derive-0.16.2`.
+
+## `0.26.2`
+
+- Fixes issue with `minicbor::display` (see issue
+  [#25](https://github.com/twittner/minicbor/issues/25)) for details.
+- Depends on `minicbor-derive-0.16.1`.
+
+## `0.26.1`
+
+- The method `Encoder::bytes_len` has been added. Like `Encoder::bytes`, it writes the CBOR item
+  head of a byte string. However, unlike `Encoder::bytes`, it does not require the actual bytes as
+  a parameter, leaving their encoding to the application. This mirrors the approach of
+  `Encoder::array` and `Encoder::map`, which also encode only the CBOR item head, with applications
+  encoding the elements via subsequent encoder method calls. For further details, see pull request
+  [#16](https://github.com/twittner/minicbor/pull/16) by @carloskiki.
+- `Encode` and `Decode` impls for `usize`, `isize`, `NonZeroUsize` and `NonZeroIsize` on 16-bit
+  architectures have been added by @chrysn. See pull request
+  [#19](https://github.com/twittner/minicbor/pull/19) for details.
+
+## `0.26.0`
+
+- Depends on `minicbor-derive-0.16.0`.
+
+## `0.25.1`
+
+- Update documentation.
+
+## `0.25.0`
+
+- Error types now implement `core::error::Error`, which was stabilised in Rust 1.81.
+- `Encode` and `Decode` are implemented for `core::num::{NonZeroIsize, NonZeroUsize}` (see
+  merge request [48][mr48] by @chrysn).
+
+## `0.24.4`
+
+- Maintenance release (documentation tweaks).
+
+## `0.24.3`
+
+- Maintenance release (cf. merge request [47][mr47] by @chrysn).
+
+## `0.24.2`
+
+- Maintenance release (cf. merge request [46][mr46] by @deundiak).
+
+## `0.24.1`
+
+- Maintenance release (cf. merge requests [44][mr44] by @alistair23 and [45][mr45] by @deundiak).
+
+## `0.24.0`
+
+- Added `minicbor::data::Tagged`, a newtype with a statically attached numeric tag.
+- Added attributes `skip` and `tag` (see [minicbor-derive-0.15.0](#minicbor-derive) for details).
+- Depend on `minicbor-derive-0.15.0`.
+
+## `0.23.0`
+
+- Moved `Token` from `minicbor::decode` to `minicbor::data`. `Token` also implements `Decode` now.
+- Removed the deprecated `Encoder::into_inner` method. Use `Encoder::into_writer` instead.
+
+## `0.22.0`
+
+-  ⚠️ **Breaking** ⚠️: `Tokenizer` now has two lifetime parameters because it sometimes borrows the
+  inner `Decoder`.
+- `Token`s can now also be encoded (cf. merge request [37][mr37] by @alistair23). Methods `Encoder::tokens`
+  and `Decoder::tokens` have been added.
+
+## `0.21.1`
+
+- `Tag::new` and `Tag::as_u64` are now declared `const` (cf. merge request [36][mr36] by @DCNick3).
+
+## `0.21.0`
+
+- ⚠️ **Breaking** ⚠️: Tag handling has been reworked (cf. merge request [34][mr34]). The `Tag` type is now
+  merely a newtype around a `u64`. A new enum `IanaTag` represents registered tag values.
+
+## `0.20.0`
+
+- Support for decoding arrays of arbitrary length has been added (cf. merge request [31][mr31] by @samuelmhicks).
+- Added `Encode` and `Decode` impls for `CStr` and `CString` (cf. merge request [29][mr29]).
+- Added `decode::info::Size` to allow length introspection of CBOR values (see merge requests [25][mr25]
+  and [28][mr28] for details).
+
+## `0.19.1`
+
+- Bugfix release (see merge request [26][mr26] by @jeandudey for details).
+
+## `0.19.0`
+
+- Added the trait `CborLen` and functions `minicbor::len` and `minicbor::len_with` to allow client
+  code to calculate the length in bytes of a value's CBOR representation. See issue [32][i32] and merge
+  request [23][mr23] for details.
+
+## `0.18.0`
+
+- Remove feature `partial-derive-support`. `Encode` and `Decode` can always be derived. See
+  commits 21060b3272d4d09af88aa8543f682c8c4477a886 and 9038d3cced197588ae4d8d2c891d6f51029a9e7d
+  for details.
+- Rework `encode::Write` impls. The blanket impl for types implementing `std::io::Write` has
+  been removed. The impl for `Vec<u8>` now always uses `Infallible` as its error type and
+  `minicbor::{to_vec, to_vec_with}` no longer require feature "std". See commit
+  498043ddce69e3da0dcc66593afdeea0dd058fb8 for details.
+- Depend on `minicbor-derive-0.12.0`.
+
+## `0.17.1`
+
+- Fix missing import for cargo feature `derive`.
+
+## `0.17.0`
+
+- Remove cargo feature `partial-skip-support`. The method `Decoder::skip` is now always available.
+  With cargo feature `alloc`, every CBOR item can be skipped over, otherwise attempting to skip
+  over indefinite-length arrays or maps inside of regular arrays or maps will result in an error.
+- Depend on `minicbor-derive-0.11.0`.
+
+## `0.16.1`
+
+- Specialise `Cow<_, [u8]>` by adding implementations of `minicbor::bytes::{EncodeBytes, DecodeBytes}`.
+
+## `0.16.0`
+
+- No change since `0.16.0-rc.1`.
+
+## `0.16.0-rc.1`
+
+- ⚠️ **Breaking** ⚠️: The `Encode` and `Decode` traits are now parameterised by a context type and
+  the context value is passed as another argument to `Encode::encode` and `Decode::decode` (see
+  merge request [21][mr21] and issue [26][i26] for details).
+  Implementations of these traits that do not make use of the context need to be generic in the
+  type variable and accept the context parameter, e.g. instead of
+
+  ```rust
+  struct T;
+
+  impl Encode for T {
+      fn encode<W: Write>(&self, e: &mut Encoder<W>) -> Result<(), Error<W::Error>> { ... }
+  }
+
+  impl<'b> Decode<'b> for T {
+      fn decode(d: &mut Decoder<'b>) -> Result<Self, Error> { ... }
+  }
+  ```
+
+  one would now write:
+
+  ```rust
+  struct T;
+
+  impl<C> Encode<C> for T {
+      fn encode<W: Write>(&self, e: &mut Encoder<W>, ctx: &mut C) -> Result<(), Error<W::Error>> { ... }
+  }
+
+  impl<'b, C> Decode<'b, C> for T {
+      fn decode(d: &mut Decoder<'b>, ctx: &mut C) -> Result<Self, Error> { ... }
+  }
+  ```
+- ⚠️ **Breaking** ⚠️: The type `data::Cbor` has been removed. To write pre-existing CBOR bytes use
+  `Encoder::writer_mut` with `Write::write_all` and to access raw CBOR bytes from the decoder use
+  `Decoder::input`.
+- ⚠️ **Breaking** ⚠️: The `AsRef` impl for `Encoder` has been removed. Use `Encoder::writer` instead.
+- ⚠️ **Breaking** ⚠️: The legacy module and feature flag have been removed.
+- `Decoder::input` has been added to get a reference to the input bytes.
+- The newtypes `minicbor::encode::{ArrayIter, MapIter}` have been added to encode any clonable
+  iterator as a CBOR array or map.
+- Several new methods have been added to `Decoder` and `Encoder` to work with contexts:
+
+    - `Decoder::decode_with`
+    - `Decoder::array_iter_with`
+    - `Decoder::map_iter_with`
+    - `Encoder::encode_with`
+
+  These correspond to the existing variants without the `_with` suffix which do not accept a context
+  and fix the context type to `()`. Note that generic implementations of `Decode` and `Encoder` must
+  therefore use the versions which accept a context parameter.
+
+  Other additions include the crate-level functions:
+
+    - `encode_with`
+    - `decode_with`
+    - `to_vec_with`
+
+## `0.15.0`
+
+- ⚠️ **Breaking** ⚠️: The encoding of IP addresses changed (see commit fac39d5a). This affects the
+  following types:
+
+    - std::net::IpAddr
+    - std::net::Ipv4Addr
+    - std::net::Ipv6Addr
+    - std::net::SocketAddr
+    - std::net::SocketAddrV4
+    - std::net::SocketAddrV6
+
+  A new module `minicbor::legacy` is introduced which contains newtype wrappers for these types
+  which continue to use the array-based encoding. Users can opt out of the new compact format by
+  enabling the cargo feature `"legacy"` and importing the types from the legacy module.
+- A new type `minicbor::data::Int` has been introduced (see merge request [20][mr20]) to allow encoding
+  and decoding of the whole CBOR integer range [-2<sup>64</sup>, 2<sup>64</sup> - 1].
+- ⚠️ **Breaking** ⚠️: As a consequence of adding the new `Int` type, a new constructor
+  `minicbor::data::Type::Int` has been added to denote those (signed) integers that do not fit
+  into an `i64`. Similarly the new constructor `minicbor::decode::Token::Int` captures those values.
+
+## `0.14.2`
+
+- Bugfix release: Imports `alloc::string::ToString` when necessary (see issue [21][i21]) for details.
+
+## `0.14.1`
+
+- Maintenance release: Add position information to UTF-8 decoding errors.
+
+## `0.14.0`
+
+- ⚠️ **Breaking** ⚠️: `encode::Error` and `decode::Error` are now structs instead of enums.
+  The actual error representation is hidden and errors are constructed with functions instead
+  of creating enum values directly, for example `Error::Message("foo")` is now
+  `Error::message("foo")`. This was done to support adding more information to error values,
+  like the decoding position. For details see merge request [19][mr19].
+
+## `0.13.2`
+
+- Added `Decode` impl for `Box<str>` (see merge request [18][mr18] by @tailhook).
+
+## `0.13.1`
+
+- Bugfix: `Decoder::datatype` would sometimes report incorrect types for negative integers
+  (see issue [18][i18] and commit 0bd97b72 for details).
+
+## `0.13.0`
+
+- ⚠️ **Breaking** ⚠️: Removed the `Clone` impl of `decode::Error`.
+- Added a new variant `decode::Error::Custom` (requires feature `std`) which contains an
+  arbitrary `Box<dyn std::error::Error + Send + Sync>`.
+
+## `0.12.1`
+
+- Change `Tokenizer::token` to move to the end of decoding input when an error occurs. This is
+  done because some errors do not cause consumption of the input, hence repeated calls to
+  `Tokenizer::token` may not terminate.
+
+## `0.12.0`
+
+- Extend the optionality of fields beyond `Option`. This applies to derived impls of `Encode`
+  and `Decode` which make use of newly added methods `Encode::is_nil` and `Decode::nil`
+  instead of `Option::is_none` and `None`. See issue [10][i10] and merge request [15][mr15] for details.
+
+## `0.11.5`
+
+- Accept non-preferred integer encodings (see issue [14][i14] for details).
+- Added `Decoder::{null, undefined}` methods.
+- Added `data::Cbor` as identity element of `Encode` and `Decode`.
+
+## `0.11.4`
+
+- Bugfix: Decoding strings or bytes with a length of `u64::MAX` would cause an overflow of the
+  internal decoder position value. This case is now properly handled. See issue [12][i12] for details.
+- Bugfix: The `partial-derive-support` feature did not re-export `minicbor-derive`, nor did it
+  make the functionality of `minicbor::bytes` available. See merge request [14][mr14] by @dne1 for details.
+
+## `0.11.3`
+
+- Bugfix release: Version `0.11.2` added `Encode`/`Decode` impls for various atomic types without
+  considering their availability on the target platform (cf. issue [11][i11]). In here we attempt to
+  only offer impls for available atomic types (cf. merge request [13][mr13] for details).
+
+## `0.11.2`
+
+- Improves `minicbor::display` to be more robust when applied to malformed CBOR values
+  (see commit c1294dd for details).
+- Adds several `Encode`/`Decode` impls:
+    - `core::num::Wrapping`
+    - `core::sync::atomic::{AtomicBool, AtomicI8, AtomicI16, AtomicI32, AtomicI64, AtomicIsize}`
+    - `core::sync::atomic::{AtomicU8, AtomicU16, AtomicU32, AtomicU64, AtomicUsize}`
+    - `core::cell::{Cell, RefCell}`
+    - `core::ops::{Bound, Range, RangeFrom, RangeInclusive, RangeTo, RangeToInclusive}`
+    - `std::path::{Path, PathBuf}`
+    - `std::time::SystemTime`
+
+## `0.11.1`
+
+- Depends on `minicbor-derive-0.7.1`.
+
+## `0.11.0`
+
+- Depends on `minicbor-derive-0.7.0`.
+
+## `0.10.1`
+
+- Small bugfix release (see commit 68963dc for details).
+
+## `0.10.0`
+
+- ⚠️ **Breaking** ⚠️: By default `Decoder::skip` is not available anymore. It can be enabled with
+  feature flag `"alloc"` (implied by `"std"`) or `"partial-skip-support"`. The latter variant
+  corresponds to the implementation of minicbor <= 0.9.1 but does not support skipping over
+  indefinite-length arrays or maps inside of regular arrays or maps. The variant enabled by
+  `"alloc"` supports skipping over arbitrary CBOR items. For more information see
+  [feature flags][3] and issue [9][i9].
+
+## `0.9.1`
+
+- Adds a few more trait impls to `ByteArray` and `ByteVec`. See commit b17fe67.
+
+## `0.9.0`
+
+- ⚠️ **Breaking** ⚠️: The encoding of `()` and `PhantomData` has changed. See commit b6b1f907.
+- ⚠️ **Breaking** ⚠️: The `decode::Error::TypeMismatch` constructor changed to use a `data::Type`
+  instead of a `u8` as its first parameter. See merge request [6][mr6] for details.
+- Added feature flag `alloc` (implied by `std`), which enables most collections types in a `no_std`
+  environment. See merge request [9][mr9] for details.
+- Added `ByteArray` to support compact encoding of `u8`-arrays, similarly to the already existing
+  `ByteSlice` and `ByteVec` types added in `minicbor-0.6.0`. See merge request [10][mr10] for details.
+- Added `Write` impl for `alloc::vec::Vec` (see merge request [11][mr11] by @Hawk777).
+- Depends on `minicbor-derive-0.6.4`.
+
+## `0.8.1`
+
+- Depends on `minicbor-derive-0.6.3`.
+
+## `0.8.0`
+
+- ⚠️ **Breaking** ⚠️: Change `data::Type` to distinguish between indefinite arrays, maps, bytes and
+  strings, and regular ones by introducing constructors such as `Type::ArrayIndef`.
+- Add new types `decode::Token` and `decode::Tokenizer` to allow decoding CBOR bytes
+  generically as a mere sequence of tokens.
+- Add a function `display` which displays CBOR bytes in [diagnostic notation][2].
+
+## `0.7.2`
+
+- Bugfix: `Type::read` used `0xc9` instead of `0xc0` when reading `Type::Tag`.
+- Add README.md
+
+## `0.7.1`
+
+- Require `minicbor-derive-0.6.1`.
+
+## `0.7.0`
+
+- Require `minicbor-derive-0.6.0`.
+
+## `0.6.0`
+
+- Removes the `&[u8]` impl for `Decode` (see issue [4][i4]) and add a new module `minicbor::bytes`
+  to support specialised encoding of CBOR bytes. This module provides the types `ByteSlice` and
+  `ByteVec` which are substitutes for `&[u8]` and `Vec<u8>` respectively. See also the module
+  documentation of `minicbor::bytes`.
+
+## `0.5.1`
+
+- Require `minicbor-derive-0.4.1`.
+
+## `0.5.0`
+
+- Require `minicbor-derive-0.4.0`.
+
+## `0.4.1`
+
+- Adds `Encoder::f16` to support encoding of `f32` values as half floats. Complements the existing
+  `Decoder::f16` method and depends on the feature `half`.
+
+## `0.4.0`
+
+- Added `Encode` and `Decode` impls for tuples (see merge request [1][mr1] by @koushiro).
+
+# minicbor-derive
+
+## `0.18.3`
+
+- Fixes feature-handling, see pull request [#48](https://github.com/twittner/minicbor/pull/48) by
+  @dtolnay for details.
+
+## `0.18.2`
+
+- Using `#[cbor(transparent)]` together with a custom codec (e.g. `#[cbor(with = "...")]`) will
+  only override `Encode::is_nil` and `Decode::nil` if the `has_nil` attribute or its equivalent
+  is present.
+
+## `0.18.1`
+
+- Maintenance release, fixing an issue with blacklisting type parameter constraints, see
+  commit 0f7cc0d8468b7cfbc8fb12833db6d6b47d54713d for details.
+
+## `0.18.0`
+
+- ⚠️ **Breaking** ⚠️ `#[cbor(transparent)]` implements `Decode::nil` and `Encode::is_nil` by
+  forwarding to the inner type (see issue [#32](https://github.com/twittner/minicbor/issues/32)
+  for details). Note that this may be a breaking change. If for example a type
+  `struct Foo(Option<u8>)` would derive `Encode` or `Decode` with `#[cbor(transparent)]`, it
+  would now use the `nil`/`is_nil` implementations of `Option`, meaning that a `Foo(None)` value
+  may not be encoded as a CBOR null value, whereas in previous versions it always would.
+- `#[cbor(skip)]` and `PhantomData` no longer require `Encode`, `Decode` or `CborLen` type
+  parameter bounds (see issue #[30](https://github.com/twittner/minicbor/issues/30) for details).
+- `#[cbor(cbor_len_bound)]` has been added to allow specifying type parameter bounds when
+  deriving `CborLen`.
+- Adding `#[cbor(cbor_len = "..."))]` no longer adds a bound for `CborLen` to type parameters
+  and if in addition `#[cbor(is_nil = "...")]` is given the bound to `Encode` is omitted as
+  well.
+
+## `0.17.0`
+
+- Updated to 2024 edition.
+
+## `0.16.2`
+
+- Bugfix release (see pull request [#26](https://github.com/twittner/minicbor/pull/26) by
+  @carloskiki for details)
+
+## `0.16.1`
+
+- Added attribute `default` for fields which uses `Default::default()` when encountering
+  missing values during decoding. See pull request
+  [#24](https://github.com/twittner/minicbor/pull/24) for details.
+
+## `0.16.0`
+
+- Indices of fields and constructors can now also be negative when map encoding is used. Note
+  that previous versions would always error when encontering a negative index value (e.g. for an
+  enum variant). This version will decode the numeric index successfully but errors just like with
+  any other unexpected index. Further details can be found in the respective GitHub issue
+  [#8](https://github.com/twittner/minicbor/issues/8) and original pull request
+  [#9](https://github.com/twittner/minicbor/pull/9) by @chrysn.
+- A new attribute `flat` has been added that can be attached to enums and changes the encoding
+  of enum variants to inline the fields. The attribute is only available for array encodings.
+  See the documentation and pull request [#12](https://github.com/twittner/minicbor/pull/12) by
+  @sterraf for details.
+- A new attribute `borrow` has been added. It is similar to the one found in serde. As a
+  consequence, the existing attribute `b` can now be thought of as an alias for `#[cbor(n(...),
+  borrow)]`. See the documentation and pull request
+  [#15](https://github.com/twittner/minicbor/pull/15) for details.
+
+## `0.15.3`
+
+- Update documentation.
+
+## `0.15.2`
+
+- Maintenance release (documentation tweaks).
+
+## `0.15.1`
+
+- Maintenance release (documentation tweaks).
+
+## `0.15.0`
+
+- Added attribute `skip` for fields, which ignores the value during encoding and initialises it
+  with `Default::default()` during decoding.
+- Added attribute `tag` to allow specifying the tag value which the subsequent value is encoded
+  and decoded with.
+- Requires `minicbor-0.24.0`.
+
+## `0.14.0`
+
+- Upgrade dependency `syn` to version 2.0 (cf. commit 3a63fc304d380f2477959906a54b1f3dedc8ccef for
+  details).
+- Requires `minicbor-0.22.0`.
+
+## `0.13.0`
+
+- Added the ability to derive the `CborLen` trait on structs and enums.
+- Requires `minicbor-0.19.0`.
+
+## `0.12.0`
+
+- Add features "alloc" and "std" to import the correct `Cow` depending on feature use.
+  (See commit 21060b3272d4d09af88aa8543f682c8c4477a886 for details.)
+- Clarify what ignoring fields means and how it relates to the "alloc" feature.
+  (See commit 9038d3cced197588ae4d8d2c891d6f51029a9e7d for details.)
+
+## `0.11.0`
+
+- Improve `#[cbor(transparent)]`: Previously, custom encode/decode functions where not allowed,
+  preventing the use of `with = "minicbor::bytes`. Explicit borrowing from `Cow`s did also not
+  work, creating owned `Cow` values instead.
+
+## `0.10.1`
+
+- Update documentation due to changes in `minicbor-0.16.1`.
+
+## `0.10.0`
+
+- Small documentation update.
+
+## `0.10.0-rc.1`
+
+- Depends on `minicbor-0.16.0-rc.1`.
+- A new attribute `context_bound` has been added to allow constraining the generic context type of
+  the derived `Encode` or `Decode` trait impl with a set of trait bounds.
+
+## `0.9.0`
+
+- Requires `minicbor-0.14.0`.
+
+## `0.8.0`
+
+- Uses `Encode::is_nil` and `Decode::nil` instead of `Option::is_none` and `None` to generalise
+  field optionality.
+- Adds new attributes `is_nil`, `nil` and `has_nil` to enable integration of optional types which
+  do not implement `Encode` or `Decode`.
+
+## `0.7.2`
+
+- Small bugfix release.
+
+## `0.7.1`
+
+- Small error reporting improvement (cf. 1b1cb41).
+
+## `0.7.0`
+
+- Major internal refactoring to make attribute parsing more flexible and robust.
+- Adds as new attributes `encode_bound`, `decode_bound` and `bound` to allow overriding the
+  generated type parameter bounds.
+
+## `0.6.4`
+
+- Improve hygiene (see merge request [7][mr7]).
+
+## `0.6.3`
+
+- Improve macro hygiene.
+
+## `0.6.2`
+
+- Add README.md
+
+## `0.6.1`
+
+- Maintenance release.
+
+## `0.6.0`
+
+- Adds `#[cbor(index_only)]` attribute to support a more compact encoding for enums without fields
+  (read [the documentation][1] for details).
+
+## `0.5.0`
+
+- When deriving, the attribute `#[cbor(with = "minicbor::bytes")]` can be used for `&[u8]` and
+  `Option<&[u8]>` if direct use of `ByteSlice` is not desired.
+  See also the section *"What about `&[u8]`?"* in `minicbor-derive`.
+
+## `0.4.1`
+
+- Adds `#[cbor(transparent)]` to allow newtypes to use the same CBOR encoding as their inner type.
+
+## `0.4.0`
+
+- Adds `#[cbor(encode_with)]`, `#[cbor(decode_with)` and `#[cbor(with)]` attributes to allow custom
+  encode/decode functions which replace their trait counterparts or provide a way to handle types
+  which do not implement these traits.
+
+## `0.3.0`
+
+- Added `#[cbor(map)]` and `#[cbor(array)]` attributes (see commit 40e8b240 for details).
+
+# minicbor-io
+
+## `0.23.0`
+
+- Require `minicbor-2.0.0`.
+
+## `0.22.0`
+
+- Updated to 2024 edition.
+- Require `minicbor-1.0.0`.
+
+## `0.21.0`
+
+- Require `minicbor-0.26.0`.
+
+## `0.20.1`
+
+- Update documentation.
+
+## `0.20.0`
+
+- Error types now implement `core::error::Error`, which was stabilised in Rust 1.81.
+- Requires `minicbor-0.25.0`.
+
+## `0.19.1`
+
+- Maintenance release (documentation tweaks).
+
+## `0.19.0`
+
+- Require `minicbor-0.24.0`.
+
+## `0.18.0`
+
+- Require `minicbor-0.23.0`.
+
+## `0.17.0`
+
+- Require `minicbor-0.22.0`.
+
+## `0.16.1`
+
+- Maintenance release.
+- Require at least `minicbor-0.21.1`.
+
+## `0.16.0`
+
+- Require at least `minicbor-0.21.0`.
+
+## `0.15.0`
+
+- Require at least `minicbor-0.20.0`.
+
+## `0.14.0`
+
+- Require at least `minicbor-0.19.0`.
+
+## `0.13.0`
+
+- Depend on `minicbor-0.18.0`.
+- `minicbor_io::Error::Encode` now contains a `minicbor::encode::Error<Infallible>`.
+  (See commit 498043ddce69e3da0dcc66593afdeea0dd058fb8 for details.)
+
+## `0.12.0`
+
+- Depend on `minicbor-0.17.0`.
+
+## `0.11.0`
+
+- No change since `0.11.0-rc.1`.
+
+## `0.11.0-rc.1`
+
+- Depends on `minicbor-0.16.0-rc.1`.
+- The following new methods have been added:
+
+    - `Reader::read_with`
+    - `AsyncReader::read_with`
+    - `Writer::write_with`
+    - `AsyncWriter::write_with`
+
+  These accept an additional context parameter and the existing variants fix the context to the
+  unit type.
+
+## `0.10.0`
+
+- Depends on `minicbor-0.15.0`.
+
+## `0.9.0`
+
+- Depends on `minicbor-0.14.0`.
+
+## `0.8.0`
+
+- Depends on `minicbor-0.13.0`.
+
+## `0.7.0`
+
+- Depends on `minicbor-0.12.0`.
+
+## `0.6.0`
+
+- Depends on `minicbor-0.11.0`.
+
+## `0.5.0`
+
+- Depends on `minicbor-0.10.0`.
+
+## `0.4.0`
+
+- Depends on `minicbor-0.9.0`.
+
+## `0.3.1`
+
+- Depends on `minicbor-0.8.1`.
+
+## `0.3.0`
+
+- Depends on `minicbor-0.8.0`.
+
+## `0.2.3`
+
+- Add README.md
+
+## `0.2.2`
+
+- Use same version for `minicbor` dependency in `dependencies` and `dev-dependencies`.
+
+## `0.2.1`
+
+- `Reader` and `AsyncReader` always return `UnexpectedEof` when reading 0 bytes while decoding a
+  frame, unless at the very beginning of a frame, when not even the length prefix has been read,
+  where `Ok(None)` would be returned instead. Previous versions returned `Ok(None)` while reading
+  a partial length prefix.
+
+## `0.1.2`
+
+- Update dev-dependencies.
+
+## `0.1.1`
+
+- Fix link to documentation in `Cargo.toml`.
+
+## `0.1.0`
+
+- Initial release which provides some I/O utilities.
+
+# minicbor-serde
+
+## `0.6.2`
+
+- Adds `EncodeError::as_write` to allow access to an underlying `Write` error.
+  See issue [#45](https://github.com/twittner/minicbor/issues/45) for details.
+
+## `0.6.1`
+
+- Implements `size_hint` for sequential and map access. See pull request
+  [#41](https://github.com/twittner/minicbor/pull/41) by @Finistere for details.
+
+## `0.6.0`
+
+- Depends on `minicbor-2.0.0`.
+
+## `0.5.0`
+
+- Updated to 2024 edition.
+- Require `minicbor-1.0.0`.
+
+## `0.4.1`
+
+- The option to serialize the unit value as null has been added to `Serializer` by @Finistere.
+  See pull request [#20](https://github.com/twittner/minicbor/pull/20) for details.
+- Requires `minicbor-0.26.1`.
+
+## `0.4.0`
+
+- Requires `minicbor-0.26.0`.
+
+## `0.3.2`
+
+- Add `no_std` attribute (see issue #3).
+
+## `0.3.1`
+
+- Update documentation.
+
+## `0.3.0`
+
+- Error types now implement `core::error::Error`, which was stabilised in Rust 1.81.
+- `Deserializer::from_slice` has been renamed to `Deserializer::new` and `to_vec` is
+  available with feature `alloc`.
+- Requires `minicbor-0.25.0`.
+
+## `0.2.1`
+
+- Exports error module.
+
+## `0.2.0`
+
+- Maintenance release (documentation tweaks).
+
+## `0.1.0`
+
+- Initial release.
+
+[1]: https://docs.rs/minicbor_derive/0.6.0/index.html#index_only
+[2]: https://www.rfc-editor.org/rfc/rfc8949.html#section-8
+[3]: https://docs.rs/minicbor/0.10.0/index.html#feature-flags
+
+[mr1]: https://gitlab.com/twittner/minicbor/-/merge_requests/1
+[mr6]: https://gitlab.com/twittner/minicbor/-/merge_requests/6
+[mr7]: https://gitlab.com/twittner/minicbor/-/merge_requests/7
+[mr9]: https://gitlab.com/twittner/minicbor/-/merge_requests/9
+[mr10]: https://gitlab.com/twittner/minicbor/-/merge_requests/10
+[mr11]: https://gitlab.com/twittner/minicbor/-/merge_requests/11
+[mr13]: https://gitlab.com/twittner/minicbor/-/merge_requests/13
+[mr14]: https://gitlab.com/twittner/minicbor/-/merge_requests/14
+[mr15]: https://gitlab.com/twittner/minicbor/-/merge_requests/15
+[mr18]: https://gitlab.com/twittner/minicbor/-/merge_requests/18
+[mr19]: https://gitlab.com/twittner/minicbor/-/merge_requests/19
+[mr20]: https://gitlab.com/twittner/minicbor/-/merge_requests/20
+[mr21]: https://gitlab.com/twittner/minicbor/-/merge_requests/21
+[mr23]: https://gitlab.com/twittner/minicbor/-/merge_requests/23
+[mr25]: https://gitlab.com/twittner/minicbor/-/merge_requests/25
+[mr26]: https://gitlab.com/twittner/minicbor/-/merge_requests/26
+[mr28]: https://gitlab.com/twittner/minicbor/-/merge_requests/28
+[mr29]: https://gitlab.com/twittner/minicbor/-/merge_requests/29
+[mr31]: https://gitlab.com/twittner/minicbor/-/merge_requests/31
+[mr34]: https://gitlab.com/twittner/minicbor/-/merge_requests/34
+[mr36]: https://gitlab.com/twittner/minicbor/-/merge_requests/36
+[mr37]: https://gitlab.com/twittner/minicbor/-/merge_requests/37
+[mr44]: https://gitlab.com/twittner/minicbor/-/merge_requests/44
+[mr45]: https://gitlab.com/twittner/minicbor/-/merge_requests/45
+[mr46]: https://gitlab.com/twittner/minicbor/-/merge_requests/46
+[mr47]: https://gitlab.com/twittner/minicbor/-/merge_requests/47
+[mr48]: https://gitlab.com/twittner/minicbor/-/merge_requests/48
+
+[i4]: https://gitlab.com/twittner/minicbor/-/issues/4
+[i9]: https://gitlab.com/twittner/minicbor/-/issues/9
+[i10]: https://gitlab.com/twittner/minicbor/-/issues/10
+[i11]: https://gitlab.com/twittner/minicbor/-/issues/11
+[i12]: https://gitlab.com/twittner/minicbor/-/issues/12
+[i14]: https://gitlab.com/twittner/minicbor/-/issues/14
+[i18]: https://gitlab.com/twittner/minicbor/-/issues/18
+[i21]: https://gitlab.com/twittner/minicbor/-/issues/21
+[i26]: https://gitlab.com/twittner/minicbor/-/issues/26
+[i32]: https://gitlab.com/twittner/minicbor/-/issues/32

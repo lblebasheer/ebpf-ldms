@@ -1,0 +1,120 @@
+[package]
+name = "nerscfslat"
+version = "0.13.0"
+edition.workspace = true
+
+license.workspace = true
+
+[dependencies]
+nerscfslat-common = { path = "../nerscfslat-common", features = ["user"] }
+
+anyhow = { workspace = true, default-features = true }
+aya = { workspace = true }
+aya-log = { workspace = true }
+env_logger = { workspace = true }
+libc = { workspace = true }
+log = { workspace = true }
+smol = { workspace = true }
+ctrlc = { workspace = true }
+[build-dependencies]
+anyhow = { workspace = true }
+aya-build = { workspace = true }
+cargo_metadata = { workspace = true }
+# TODO(https://github.com/rust-lang/cargo/issues/12375): this should be an artifact dependency, but
+# it's not possible to tell cargo to use `-Z build-std` to build it. We cargo-in-cargo in the build
+# script to build this, but we want to teach cargo about the dependency so that cache invalidation
+# works properly.
+#
+# Note also that https://github.com/rust-lang/cargo/issues/10593 occurs when `target = ...` is added
+# to an artifact dependency; it seems possible to work around that by setting `resolver = "1"` in
+# Cargo.toml in the workspace root.
+#
+# Finally note that *any* usage of `artifact = ...` in *any* Cargo.toml in the workspace breaks
+# workflows with stable cargo; stable cargo outright refuses to load manifests that use unstable
+# features.
+nerscfslat-ebpf = { path = "../nerscfslat-ebpf" }
+
+[[bin]]
+name = "nerscfslat"
+path = "src/main.rs"
+
+[package.metadata.generate-rpm]
+name = "nerscfslat"
+license = "MIT OR Apache-2.0"
+summary = "Measure latency of filesystem calls"
+auto-req = "disabled"
+assets = [
+    { source = "target/release/nerscfslat", dest = "/usr/sbin/nerscfslat", mode = "755" },
+    { source = "deploy/nerscfslat_load_prefixes.sh", dest = "/usr/local/sbin/nerscfslat_load_prefixes.sh", mode = "755" },
+    { source = "deploy/nersc-ebpf-nerscfslat.service", dest = "/etc/systemd/system/nersc-ebpf-nerscfslat.service", mode = "644" },
+]
+post_install_script = """\
+    if [ -x /usr/bin/systemctl ]; then
+            test -n "$FIRST_ARG" || FIRST_ARG="$1"
+            [ -d /var/lib/systemd/migrated ] || mkdir -p /var/lib/systemd/migrated || :
+
+            if [ "$YAST_IS_RUNNING" != "instsys" ]; then
+                    /usr/bin/systemctl daemon-reload || :
+            fi
+            for service in nersc-ebpf-nerscfslat.service ; do
+                    sysv_service=${service%.*}
+
+                    if [ -e /run/systemd/rpm/needs-preset/$service ]; then
+                            /usr/bin/systemctl preset $service || :
+                            rm "/run/systemd/rpm/needs-preset/$service" || :
+
+                    elif [ -e /run/systemd/rpm/needs-sysv-convert/$service ]; then
+                            /usr/sbin/systemd-sysv-convert --apply $sysv_service || :
+                            rm "/run/systemd/rpm/needs-sysv-convert/$service" || :
+                            touch /var/lib/systemd/migrated/$sysv_service || :
+                    fi
+            done
+    fi
+    """
+pre_uninstall_script = """\
+    test -n "$FIRST_ARG" || FIRST_ARG="$1"
+    if [ "$FIRST_ARG" -eq 0 -a -x /usr/bin/systemctl ]; then
+            # Package removal, not upgrade
+            /usr/bin/systemctl --no-reload disable nersc-ebpf-nerscfslat.service || :
+            (
+                    test "$YAST_IS_RUNNING" = instsys && exit 0
+                    test -f /etc/sysconfig/services -a \
+                         -z "$DISABLE_STOP_ON_REMOVAL" && . /etc/sysconfig/services
+                    test "$DISABLE_STOP_ON_REMOVAL" = yes -o \
+                         "$DISABLE_STOP_ON_REMOVAL" = 1 && exit 0
+                    /usr/bin/systemctl stop nersc-ebpf-nerscfslat.service
+            ) || :
+    fi
+    """
+post_uninstall_script = """\
+    test -n "$FIRST_ARG" || FIRST_ARG="$1"
+
+    if [ $1 -eq 0 ]; then
+            # Package removal
+            for service in nersc-ebpf-nerscfslat.service ; do
+                    sysv_service="${service%.*}"
+                    rm -f "/var/lib/systemd/migrated/$sysv_service" || :
+            done
+    fi
+    if [ -x /usr/bin/systemctl ]; then
+            /usr/bin/systemctl daemon-reload || :
+    fi
+
+    if [ "$FIRST_ARG" -ge 1 ]; then
+            # Package upgrade, not uninstall
+            if [ -x /usr/bin/systemctl ]; then
+                    (
+                            test "$YAST_IS_RUNNING" = instsys && exit 0
+                            test -f /etc/sysconfig/services -a \
+                                 -z "$DISABLE_RESTART_ON_UPDATE" && . /etc/sysconfig/services
+                            test "$DISABLE_RESTART_ON_UPDATE" = yes -o \
+                                 "$DISABLE_RESTART_ON_UPDATE" = 1 && exit 0
+                            /usr/bin/systemctl try-restart nersc-ebpf-nerscfslat.service
+                    ) || :
+            fi
+    fi
+    """
+
+[package.metadata.generate-rpm.requires]
+ebpf_streamer = ">= 0.3.0"
+bpftool = "*"

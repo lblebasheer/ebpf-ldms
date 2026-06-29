@@ -1,0 +1,15 @@
+[package]
+name = "nerscfslat-ebpf"
+version = "0.1.0"
+edition.workspace = true
+
+[dependencies]
+nerscfslat-common = { path = "../nerscfslat-common" }
+aya-ebpf = { workspace = true }
+
+[build-dependencies]
+which = { workspace = true }
+
+[[bin]]
+name = "nerscfslat"
+path = "src/main.rs"

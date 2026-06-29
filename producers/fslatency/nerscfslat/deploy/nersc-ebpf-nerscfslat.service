@@ -1,0 +1,16 @@
+[Unit]
+Description = ebpf filesystem latency monitor
+After = nersc-ebpf-streamer.service
+BindsTo = nersc-ebpf-streamer.service
+
+[Service]
+Type = simple
+Environment="PREFIXES=/global/u1 /global/u2 /global/homes /global/cfs /pscratch /mscratch /ascratch"
+Environment="NUM_PROBES=8"
+ExecStartPre=bash -c "until [[ -f /sys/fs/bpf/LDMS_SHARED_STREAM ]];do sleep 10s;done"
+ExecStart = /usr/sbin/nerscfslat
+ExecStartPost=bash -c "until [[ $(bpftool map|grep FSLATENCYSTATS|wc -l) -eq $NUM_PROBES ]];do :;done"
+ExecStartPost = /usr/local/sbin/nerscfslat_load_prefixes.sh
+
+[Install]
+WantedBy = nersc-ready.target
