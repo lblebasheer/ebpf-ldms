@@ -7,16 +7,7 @@ fn main() -> anyhow::Result<()> {
         .exec()
         .context("MetadataCommand::exec")?;
 
-    let ebpf_crate_names = [
-        "nerscfslat-ebpf-close",
-        "nerscfslat-ebpf-fsync",
-        "nerscfslat-ebpf-iterread",
-        "nerscfslat-ebpf-iterwrite",
-        "nerscfslat-ebpf-read",
-        "nerscfslat-ebpf-readv",
-        "nerscfslat-ebpf-writev",
-        "nerscfslat-ebpf-write",
-    ];
+    let ebpf_crate_names = ["nerscfslat-ebpf"];
 
     let found: Vec<_> = ebpf_crate_names
         .iter()

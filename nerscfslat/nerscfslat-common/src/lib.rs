@@ -4,6 +4,7 @@ use core::{mem::offset_of, ptr::write_volatile};
 use aya_ebpf::{
     EbpfContext,
     bindings::bpf_dynptr,
+    btf_maps,
     cty::{c_uchar, c_void},
     helpers::{
         bpf_dynptr_from_mem, bpf_dynptr_write, bpf_get_current_task_btf, bpf_ktime_get_ns,
@@ -16,7 +17,7 @@ use aya_log_ebpf::{debug, error, trace};
 use bare_metal_modulo::{MNum, ModNumC};
 use minicbor::Encoder;
 
-mod maps;
+pub mod maps;
 #[allow(nonstandard_style)]
 #[allow(unnecessary_transmutes)]
 #[allow(unsafe_op_in_unsafe_fn)]
@@ -26,9 +27,9 @@ use crate::maps::*;
 mod constants;
 use crate::constants::*;
 
-pub fn try_fslat_entry(ctx: FEntryContext, _filpop: &str, file_arg_idx: usize) -> Result<u32, u32> {
+pub fn try_fslat_entry(ctx: FEntryContext, _filpop: &str) -> Result<u32, u32> {
+    let filp: *mut vmlinux::file = ctx.arg(0);
     let now = unsafe { bpf_ktime_get_ns() };
-    let filp: *mut vmlinux::file = ctx.arg(file_arg_idx);
     let pathptr = unsafe { &raw mut (*filp).f_path };
     let Some(pathbuf_ptr) = PATHBUF.get_ptr_mut(0) else {
         return Err(1);
@@ -261,7 +262,12 @@ extern "C" fn assemble_pathfrag(index: u32, ctx: *mut AssembleCtx) -> u64 {
     0
 }
 
-pub fn try_fslat_exit(ctx: FExitContext, filpop: &str, ret: i64) -> Result<u32, u32> {
+pub fn try_fslat_exit(
+    ctx: FExitContext,
+    filpop: &str,
+    ret: i64,
+    stats_map: &btf_maps::Array<FsLatencyStats, { NUM_PATH_PREFIX as usize }, 0>,
+) -> Result<u32, u32> {
     let Some(countptr) = COUNTER.get_ptr_mut(0) else {
         return Err(1);
     };
@@ -278,7 +284,7 @@ pub fn try_fslat_exit(ctx: FExitContext, filpop: &str, ret: i64) -> Result<u32, 
             let now = unsafe { bpf_ktime_get_ns() };
             for idx in 0..NUM_PATH_PREFIX {
                 #[allow(static_mut_refs)]
-                let Some(fsstat) = (unsafe { FSLATENCYSTATS.get_ptr_mut(idx) }) else {
+                let Some(fsstat) = stats_map.get_ptr_mut(idx) else {
                     break;
                 };
                 if unsafe {

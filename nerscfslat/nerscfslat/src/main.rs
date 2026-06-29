@@ -92,101 +92,27 @@ fn main() -> anyhow::Result<()> {
 
     let btf = Btf::from_sys_fs().context("BTF from sysfs")?;
 
-    let mut ebpf_close = load_ebpf(aya::include_bytes_aligned!(concat!(
+    let mut ebpf = load_ebpf(aya::include_bytes_aligned!(concat!(
         env!("OUT_DIR"),
-        "/nerscfslat-close"
+        "/nerscfslat"
     )))?;
-    attach_probe_pair(
-        &mut ebpf_close,
-        "filp_close_entry",
-        "filp_close_exit",
-        "filp_close",
-        &btf,
-    )?;
 
-    let mut ebpf_fsync = load_ebpf(aya::include_bytes_aligned!(concat!(
-        env!("OUT_DIR"),
-        "/nerscfslat-fsync"
-    )))?;
-    attach_probe_pair(
-        &mut ebpf_fsync,
-        "vfs_fsync_range_entry",
-        "vfs_fsync_range_exit",
-        "vfs_fsync_range",
-        &btf,
-    )?;
+    let probes = [
+        ("filp_close_entry", "filp_close_exit", "filp_close"),
+        (
+            "vfs_fsync_range_entry",
+            "vfs_fsync_range_exit",
+            "vfs_fsync_range",
+        ),
+        ("vfs_write_entry", "vfs_write_exit", "vfs_write"),
+        ("vfs_writev_entry", "vfs_writev_exit", "vfs_writev"),
+        ("vfs_read_entry", "vfs_read_exit", "vfs_read"),
+        ("vfs_readv_entry", "vfs_readv_exit", "vfs_readv"),
+    ];
 
-    let mut ebpf_writev = load_ebpf(aya::include_bytes_aligned!(concat!(
-        env!("OUT_DIR"),
-        "/nerscfslat-writev"
-    )))?;
-    attach_probe_pair(
-        &mut ebpf_writev,
-        "vfs_writev_entry",
-        "vfs_writev_exit",
-        "vfs_writev",
-        &btf,
-    )?;
-
-    let mut ebpf_write = load_ebpf(aya::include_bytes_aligned!(concat!(
-        env!("OUT_DIR"),
-        "/nerscfslat-write"
-    )))?;
-    attach_probe_pair(
-        &mut ebpf_write,
-        "vfs_write_entry",
-        "vfs_write_exit",
-        "vfs_write",
-        &btf,
-    )?;
-
-    let mut ebpf_read = load_ebpf(aya::include_bytes_aligned!(concat!(
-        env!("OUT_DIR"),
-        "/nerscfslat-read"
-    )))?;
-    attach_probe_pair(
-        &mut ebpf_read,
-        "vfs_read_entry",
-        "vfs_read_exit",
-        "vfs_read",
-        &btf,
-    )?;
-
-    let mut ebpf_readv = load_ebpf(aya::include_bytes_aligned!(concat!(
-        env!("OUT_DIR"),
-        "/nerscfslat-readv"
-    )))?;
-    attach_probe_pair(
-        &mut ebpf_readv,
-        "vfs_readv_entry",
-        "vfs_readv_exit",
-        "vfs_readv",
-        &btf,
-    )?;
-
-    let mut ebpf_iterread = load_ebpf(aya::include_bytes_aligned!(concat!(
-        env!("OUT_DIR"),
-        "/nerscfslat-iterread"
-    )))?;
-    attach_probe_pair(
-        &mut ebpf_iterread,
-        "vfs_iter_read_entry",
-        "vfs_iter_read_exit",
-        "vfs_iter_read",
-        &btf,
-    )?;
-
-    let mut ebpf_iterwrite = load_ebpf(aya::include_bytes_aligned!(concat!(
-        env!("OUT_DIR"),
-        "/nerscfslat-iterwrite"
-    )))?;
-    attach_probe_pair(
-        &mut ebpf_iterwrite,
-        "vfs_iter_write_entry",
-        "vfs_iter_write_exit",
-        "vfs_iter_write",
-        &btf,
-    )?;
+    for (entry, exit, fn_name) in &probes {
+        attach_probe_pair(&mut ebpf, entry, exit, fn_name, &btf)?;
+    }
 
     let (tx, rx) = smol::channel::bounded::<()>(1);
     ctrlc::set_handler(move || {
