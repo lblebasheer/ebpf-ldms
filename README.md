@@ -120,7 +120,7 @@ systemctl start nersc-ebpf-streamer.service
 ## License
 
 Unless otherwise noted, this project is distributed under the terms of the
-[BSD 3-Clause License](LICENSE.md).
+[BSD-3-Clause-LBNL](LICENSE.md).
 
 ### eBPF
 
