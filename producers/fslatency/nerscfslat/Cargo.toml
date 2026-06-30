@@ -35,7 +35,7 @@ cargo_metadata = { workspace = true }
 nerscfslat-ebpf = { path = "../nerscfslat-ebpf" }
 
 [[bin]]
-name = "nerscfslat"
+name = "nerscfslat-ebpf"
 path = "src/main.rs"
 
 [package.metadata.generate-rpm]

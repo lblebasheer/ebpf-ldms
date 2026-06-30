@@ -94,7 +94,7 @@ fn main() -> anyhow::Result<()> {
 
     let mut ebpf = load_ebpf(aya::include_bytes_aligned!(concat!(
         env!("OUT_DIR"),
-        "/nerscfslat"
+        "/nerscfslat-ebpf"
     )))?;
 
     let probes = [
