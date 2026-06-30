@@ -11,5 +11,5 @@ aya-ebpf = { workspace = true }
 which = { workspace = true }
 
 [[bin]]
-name = "nerscfslat"
+name = "nerscfslat-ebpf"
 path = "src/main.rs"

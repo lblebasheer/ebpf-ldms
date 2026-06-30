@@ -35,7 +35,7 @@ cargo_metadata = { workspace = true }
 nerscfslat-ebpf = { path = "../nerscfslat-ebpf" }
 
 [[bin]]
-name = "nerscfslat-ebpf"
+name = "nerscfslat"
 path = "src/main.rs"
 
 [package.metadata.generate-rpm]
@@ -44,7 +44,7 @@ license = "BSD-3-Clause"
 summary = "Measure latency of filesystem calls"
 auto-req = "disabled"
 assets = [
-    { source = "target/release/nerscfslat", dest = "/usr/sbin/nerscfslat", mode = "755" },
+    { source = "../../../target/release/nerscfslat", dest = "/usr/sbin/nerscfslat", mode = "755" },
     { source = "../deploy/nerscfslat_load_prefixes.sh", dest = "/usr/local/sbin/nerscfslat_load_prefixes.sh", mode = "755" },
     { source = "../deploy/nersc-ebpf-nerscfslat.service", dest = "/etc/systemd/system/nersc-ebpf-nerscfslat.service", mode = "644" },
 ]
