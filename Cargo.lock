@@ -692,7 +692,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "ebpf_streamer"
+name = "ebpf_ldms"
 version = "0.14.0"
 dependencies = [
  "anyhow",

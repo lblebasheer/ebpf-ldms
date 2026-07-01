@@ -8,7 +8,7 @@ use log::warn;
 #[command(author = env!("CARGO_PKG_AUTHORS"))]
 #[command(version = env!("CARGO_PKG_VERSION"))]
 #[command(about = env!("CARGO_PKG_DESCRIPTION"), long_about = None)]
-pub struct EbpfStreamer {
+pub struct EbpfLdms {
     /// Name of LDMS stream to which messages are published
     #[arg(id="stream",long,default_value_t = String::from("nersc"),value_name="STREAM")]
     pub stream: String,
@@ -36,7 +36,7 @@ pub struct EbpfStreamer {
     #[arg(id="hostname",long,default_value_t = String::from("localhost"),value_name="HOSTNAME")]
     pub hostname: String,
     /// File to which logs are written in addition to the console
-    #[arg(id="logfile",long,default_value_t = String::from("/var/log/ebpf_streamer.log"),value_name="LOGFILE")]
+    #[arg(id="logfile",long,default_value_t = String::from("/var/log/ebpf_ldms.log"),value_name="LOGFILE")]
     pub logfile: String,
 }
 
@@ -44,7 +44,7 @@ pub trait ValidateClap {
     fn parse_ratelimit(&mut self);
 }
 
-impl ValidateClap for EbpfStreamer {
+impl ValidateClap for EbpfLdms {
     fn parse_ratelimit(&mut self) {
         (self.msglimit, self.interval) = match (self.msglimit, self.interval) {
             (0, 0) => {

@@ -116,5 +116,5 @@ post_uninstall_script = """\
     """
 
 [package.metadata.generate-rpm.requires]
-ebpf_streamer = ">= 0.3.0"
+ebpf_ldms = ">= 0.3.0"
 bpftool = "*"

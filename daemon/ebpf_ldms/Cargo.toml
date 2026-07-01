@@ -1,5 +1,5 @@
 [package]
-name = "ebpf_streamer"
+name = "ebpf_ldms"
 version.workspace = true
 authors = ["Ershaad Basheer <ebasheer@lbl.gov>"]
 description = "Daemon that relays eBPF generated messages to LDMS"
@@ -34,18 +34,18 @@ anyhow = { workspace = true }
 aya-build = { workspace = true }
 
 [[bin]]
-name = "ebpf_streamer"
+name = "ebpf_ldms"
 path = "src/main.rs"
 
 [package.metadata.generate-rpm]
-name = "ebpf_streamer"
+name = "ebpf_ldms"
 license = "BSD-3-Clause-LBNL"
 summary = "Daemon that streams ebpf-generated data to LDMS"
 auto-req = "disabled"
 assets = [
-    { source = "../../target/release/ebpf_streamer", dest = "/usr/sbin/ebpf_streamer", mode = "755" },
-    { source = "../deploy/nersc-ebpf-streamer.service", dest = "/etc/systemd/system/nersc-ebpf-streamer.service", mode = "644" },
-    { source = "../deploy/ebpf_streamer", dest = "/etc/sysconfig/ebpf_streamer", mode = "644", config = "noreplace" },
+    { source = "../../target/release/ebpf_ldms", dest = "/usr/sbin/ebpf_ldms", mode = "755" },
+    { source = "../deploy/ebpf-ldms.service", dest = "/etc/systemd/system/ebpf-ldms.service", mode = "644" },
+    { source = "../deploy/ebpf_ldms", dest = "/etc/sysconfig/ebpf_ldms", mode = "644", config = "noreplace" },
 ]
 post_install_script = """\
     if [ -x /usr/bin/systemctl ]; then
@@ -55,7 +55,7 @@ post_install_script = """\
             if [ "$YAST_IS_RUNNING" != "instsys" ]; then
                     /usr/bin/systemctl daemon-reload || :
             fi
-            for service in nersc-ebpf-streamer.service ; do
+            for service in ebpf-ldms.service ; do
                     sysv_service=${service%.*}
 
                     if [ -e /run/systemd/rpm/needs-preset/$service ]; then
@@ -74,14 +74,14 @@ pre_uninstall_script = """\
     test -n "$FIRST_ARG" || FIRST_ARG="$1"
     if [ "$FIRST_ARG" -eq 0 -a -x /usr/bin/systemctl ]; then
             # Package removal, not upgrade
-            /usr/bin/systemctl --no-reload disable nersc-ebpf-streamer.service || :
+            /usr/bin/systemctl --no-reload disable ebpf-ldms.service || :
             (
                     test "$YAST_IS_RUNNING" = instsys && exit 0
                     test -f /etc/sysconfig/services -a \
                          -z "$DISABLE_STOP_ON_REMOVAL" && . /etc/sysconfig/services
                     test "$DISABLE_STOP_ON_REMOVAL" = yes -o \
                          "$DISABLE_STOP_ON_REMOVAL" = 1 && exit 0
-                    /usr/bin/systemctl stop nersc-ebpf-streamer.service
+                    /usr/bin/systemctl stop ebpf-ldms.service
             ) || :
     fi
     """
@@ -90,7 +90,7 @@ post_uninstall_script = """\
 
     if [ $1 -eq 0 ]; then
             # Package removal
-            for service in nersc-ebpf-streamer.service ; do
+            for service in ebpf-ldms.service ; do
                     sysv_service="${service%.*}"
                     rm -f "/var/lib/systemd/migrated/$sysv_service" || :
             done
@@ -108,7 +108,7 @@ post_uninstall_script = """\
                                  -z "$DISABLE_RESTART_ON_UPDATE" && . /etc/sysconfig/services
                             test "$DISABLE_RESTART_ON_UPDATE" = yes -o \
                                  "$DISABLE_RESTART_ON_UPDATE" = 1 && exit 0
-                            /usr/bin/systemctl try-restart nersc-ebpf-streamer.service
+                            /usr/bin/systemctl try-restart ebpf-ldms.service
                     ) || :
             fi
     fi

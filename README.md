@@ -1,19 +1,19 @@
-# ebpf_streamer
+# ebpf_ldms
 
 ## Overview
 
-ebpf_streamer is a userspace daemon that provides a connector between eBPF
+ebpf_ldms is a userspace daemon that provides a connector between eBPF
 based sources of event data, and [LDMS](https://github.com/ovis-hpc/ldms).
 It aims to lower the barrier to writing eBPF programs for monitoring and
 data collection by factoring out all the infrastructure needed for relaying
-the collected data to LDMS. ebpf_streamer achieves this by creating a pinned
+the collected data to LDMS. ebpf_ldms achieves this by creating a pinned
 eBPF ring buffer map in a well known location
 `/sys/fs/bpf/LDMS_SHARED_STREAM`. All the eBPF programs running on the node
 need only submit messages to this shared map in the efficient binary
 [CBOR](https://cbor.io/) format. CBOR was chosen since it has very small
 implementations that are suitable for inlining into eBPF and are able to run
 in the stack-limited eBPF environment with no access to heap allocated
-memory.  The ebpf_streamer daemon reads messages off of the ring buffer map,
+memory.  The ebpf_ldms daemon reads messages off of the ring buffer map,
 expands them into JSON, appends some metadata and submits them to the chosen
 stream of an LDMS daemon at a configurable location, the default being the
 `ldmsd` running on `localhost`.
@@ -48,12 +48,12 @@ crates.
 
 ## Build
 
-ebpf_streamer calls into LDMS libraries using rust FFI. The LDMS libraries
+ebpf_ldms calls into LDMS libraries using rust FFI. The LDMS libraries
 are therefore required to be linked into the resulting binary. This is done
 by passing the path of the LDMS libraries with the `-L` option to the rust
 compiler.
 
-To build ebpf_streamer, run the following in the top-level repository
+To build ebpf_ldms, run the following in the top-level repository
 directory, with the path to the LDMS libraries.
 
 ```
@@ -64,7 +64,7 @@ RUSTFLAGS='-L /opt/ovis-ldms/lib' cargo build --release
 
 ### Install cargo helper
 
-The cargo manifest file at `<repo>/ebpf_streamer/Cargo.toml` contains
+The cargo manifest file at `<repo>/ebpf_ldms/Cargo.toml` contains
 directives for generating an RPM package from the release binaries and
 configuration files. You'll need to install the following cargo helper
 program first.
@@ -81,20 +81,20 @@ directory.
 
 
 ```
-cargo generate-rpm -p ebpf_streamer
+cargo generate-rpm -p ebpf_ldms
 ```
 
 ## Configuring the daemon
 
 The configuration options that are passed to the daemon during startup by
-the systemd service are in `/etc/sysconfig/ebpf_streamer`. Brief
+the systemd service are in `/etc/sysconfig/ebpf_ldms`. Brief
 descriptions of the option can be printed by running the daemon command.
 
 ```
-muller:login05:~ # LD_LIBRARY_PATH=/opt/ovis-ldms/lib /usr/sbin/ebpf_streamer --help
+muller:login05:~ # LD_LIBRARY_PATH=/opt/ovis-ldms/lib /usr/sbin/ebpf_ldms --help
 Daemon that relays eBPF generated messages to LDMS
 
-Usage: ebpf_streamer [OPTIONS]
+Usage: ebpf_ldms [OPTIONS]
 
 Options:
       --stream <STREAM>              Name of LDMS stream to which messages are published [default: nersc]
@@ -104,17 +104,17 @@ Options:
       --port <PORT>                  TCP Port of LDMS daemon [default: 60003]
       --authentication <none|munge>  Authentication method when connecting to LDMS daemon [default: none]
       --hostname <HOSTNAME>          Set "hostname" field to this value in published messages [default: localhost]
-      --logfile <LOGFILE>            File to which logs are written in addition to the console [default: /var/log/ebpf_streamer.log]
+      --logfile <LOGFILE>            File to which logs are written in addition to the console [default: /var/log/ebpf_ldms.log]
   -h, --help                         Print help
   -V, --version                      Print version
 ```
 
 ## Starting the service
 
-The ebpf_streamer RPM includes a systemd service unit file.
+The ebpf_ldms RPM includes a systemd service unit file.
 
 ```
-systemctl start nersc-ebpf-streamer.service
+systemctl start ebpf-ldms.service
 ```
 
 ## License
