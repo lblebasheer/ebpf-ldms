@@ -136,7 +136,7 @@ async fn ring_loop(
 }
 
 fn main() -> anyhow::Result<()> {
-    let mut cli = cli::EbpfStreamer::parse();
+    let mut cli = cli::EbpfLdms::parse();
     Ftail::new()
         .console_env_level() // log to console
         .single_file(&Path::new(&cli.logfile), true, LevelFilter::Debug)
