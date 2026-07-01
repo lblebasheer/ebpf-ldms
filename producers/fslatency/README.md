@@ -1,4 +1,4 @@
-# nerscfslat
+# vfslatency
 
 An eBPF-based filesystem latency monitor for Linux, built with the
 [Aya](https://aya-rs.dev/) Rust framework. It instruments VFS kernel functions
@@ -18,7 +18,7 @@ filesystem becomes slow or unresponsive, users feel it immediately, but
 historically it has been hard to make direct, continuous, per-filesystem
 measurements of that latency from the perspective of user processes.
 
-`nerscfslat` was created to fill that gap. It runs as a system daemon on NERSC
+`vfslatency` was created to fill that gap. It runs as a system daemon on NERSC
 nodes, using eBPF to observe actual VFS call latencies with nanosecond
 precision, broken down by filesystem — without modifying any application code.
 
@@ -26,16 +26,14 @@ precision, broken down by filesystem — without modifying any application code.
 
 ### eBPF Probes
 
-Eight kernel functions are instrumented using `fentry`/`fexit` tracepoints:
+Six kernel functions are instrumented using `fentry`/`fexit` tracepoints:
 
 | Kernel function    | Operation                     |
 |--------------------|-------------------------------|
 | `vfs_write`        | Single-buffer write           |
 | `vfs_writev`       | Vectored (scatter-gather) write |
-| `vfs_iter_write`    | Vectored (scatter-gather) write |
-| `vfs_read`        | Single-buffer read           |
-| `vfs_readv`       | Vectored (scatter-gather) read |
-| `vfs_iter_read`    | Vectored (scatter-gather) read |
+| `vfs_read`         | Single-buffer read            |
+| `vfs_readv`        | Vectored (scatter-gather) read |
 | `vfs_fsync_range`  | fsync / data flush            |
 | `filp_close`       | File close                    |
 
@@ -65,7 +63,7 @@ limit:
 | `/ascratch`   | Additional scratch (Lustre)             |
 
 Prefixes are loaded at startup via `bpftool` using the
-`nerscfslat_load_prefixes.sh` helper script (see [Configuration](#configuration)).
+`vfslatency_load_prefixes.sh` helper script (see [Configuration](#configuration)).
 
 ### Aggregation and the Ring Buffer
 
@@ -109,8 +107,8 @@ Each record written to the ring buffer is a CBOR map. Example:
 
 ## Integration with ebpf-ldms
 
-[ebpf-ldms](https://gitlab.nersc.gov/ebasheer/ebpf-ldms-streamer) is
-a companion daemon that runs alongside `nerscfslat`. It reads CBOR records from
+[ebpf-ldms](https://github.com/lblebasheer/ebpf-ldms) is
+a companion daemon that runs alongside `vfslatency`. It reads CBOR records from
 the `LDMS_SHARED_STREAM` ring buffer and forwards them into
 [LDMS](https://ovis-hpc.readthedocs.io/en/latest/ldms/ldms-quickstart.html)
 (Lightweight Distributed Metric Service) as JSON stream messages.
@@ -119,14 +117,14 @@ the `LDMS_SHARED_STREAM` ring buffer and forwards them into
 
 Path prefixes are specified via the `PREFIXES` environment variable in the
 systemd service unit (space-separated). The default configuration in
-`deploy/nersc-ebpf-nerscfslat.service` is:
+`deploy/vfslatency.service` is:
 
 ```
 PREFIXES=/global/u1 /global/u2 /global/cfs /pscratch /mscratch /ascratch
 ```
 
-After `nerscfslat` starts and its eBPF maps are loaded, the
-`nerscfslat_load_prefixes.sh` script uses `bpftool` to write the prefix list
+After `vfslatency` starts and its eBPF maps are loaded, the
+`vfslatency_load_prefixes.sh` script uses `bpftool` to write the prefix list
 into the `FSLATENCYSTATS` BPF array map of each active probe. Up to **8 prefixes**
 are supported; each prefix must be at most **32 characters** long.
 
@@ -134,7 +132,7 @@ are supported; each prefix must be at most **32 characters** long.
 
 The project produces an RPM via
 [`cargo-generate-rpm`](https://github.com/cat-in-136/cargo-generate-rpm).
-The RPM installs a systemd service (`nersc-ebpf-nerscfslat.service`).
+The RPM installs a systemd service (`vfslatency.service`).
 ## Building from Source
 
 ### Prerequisites
@@ -155,18 +153,14 @@ the userspace binary.
 
 ## Crate Structure
 
+All six eBPF probes live in a single `vfslatency-ebpf` crate. A macro generates
+the `fentry`/`fexit` pair for each instrumented kernel function:
+
 | Crate                      | Description                                              |
 |----------------------------|----------------------------------------------------------|
-| `nerscfslat`               | Userspace driver: loads and attaches eBPF programs       |
-| `nerscfslat-common`        | Shared eBPF logic: path resolution, stats, ring buffer writes |
-| `nerscfslat-ebpf-close`    | eBPF probe for `filp_close`                              |
-| `nerscfslat-ebpf-fsync`    | eBPF probe for `vfs_fsync_range`                         |
-| `nerscfslat-ebpf-write`    | eBPF probe for `vfs_write`                               |
-| `nerscfslat-ebpf-writev`   | eBPF probe for `vfs_writev`                              |
-| `nerscfslat-ebpf-iterwrite`| eBPF probe for `vfs_iter_write`                          |
-| `nerscfslat-ebpf-read`     | eBPF probe for `vfs_read`                                |
-| `nerscfslat-ebpf-readv`    | eBPF probe for `vfs_readv`                               |
-| `nerscfslat-ebpf-iterread` | eBPF probe for `vfs_iter_read`                           |
+| `vfslatency`               | Userspace driver: loads and attaches eBPF programs       |
+| `vfslatency-common`        | Shared eBPF logic: path resolution, stats, ring buffer writes |
+| `vfslatency-ebpf`          | Single eBPF crate containing probes for: `filp_close`, `vfs_fsync_range`, `vfs_write`, `vfs_writev`, `vfs_read`, `vfs_readv` |
 
 ## License
 

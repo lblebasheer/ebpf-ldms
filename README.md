@@ -25,7 +25,7 @@ the required fields (we can change this) and pushes it to the ring buffer,
 will be accepted by the daemon and relayed to LDMS. An example of such a
 producer that is written using the [Aya](https://github.com/aya-rs/aya)
 framework which is the same framework that the daemon uses is
-[nerscfslat](producers/fslatency/). It relies on
+[vfslatency](producers/fslatency/). It relies on
 the `minicbor` crate to generate CBOR messages in the limited eBPF runtime
 environment.
 
@@ -97,7 +97,7 @@ Daemon that relays eBPF generated messages to LDMS
 Usage: ebpf_ldms [OPTIONS]
 
 Options:
-      --stream <STREAM>              Name of LDMS stream to which messages are published [default: nersc]
+      --stream <STREAM>              Name of LDMS stream to which messages are published [default: ebpf]
       --msglimit <MSGPERPERIOD>      Average message rate limit for an individual producer in messages/interval (see --interval) [default: 2]
       --interval <INTERVAL>          Length of time interval over which message limits are calculated. In seconds [default: 1]
       --host <HOST>                  Hostname or IP address of LDMS daemon [default: localhost]
@@ -124,6 +124,6 @@ Unless otherwise noted, this project is distributed under the terms of the
 
 ### eBPF
 
-The eBPF programs (in `producers/fslatency/nerscfslat-ebpf/`)
+The eBPF programs (in `producers/fslatency/vfslatency-ebpf/`)
 are distributed under the terms of `Dual BSD/GPL` for compatibility
 with the Linux kernel's eBPF verifier.

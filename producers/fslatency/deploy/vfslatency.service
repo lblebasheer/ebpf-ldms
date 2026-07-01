@@ -8,9 +8,9 @@ Type = simple
 Environment="PREFIXES=/global/u1 /global/u2 /global/homes /global/cfs /pscratch /mscratch /ascratch"
 Environment="MAP_NAMES=CLOSE_STATS FSYNC_STATS WRITE_STATS WRITEV_STATS READ_STATS READV_STATS"
 ExecStartPre=bash -c "until [[ -f /sys/fs/bpf/LDMS_SHARED_STREAM ]];do sleep 10s;done"
-ExecStart = /usr/sbin/nerscfslat
+ExecStart = /usr/sbin/vfslatency
 ExecStartPost=bash -c "until for map in $MAP_NAMES;do bpftool map|grep $map;done;do :;done"
-ExecStartPost = /usr/local/sbin/nerscfslat_load_prefixes.sh
+ExecStartPost = /usr/local/sbin/vfslatency_load_prefixes.sh
 
 [Install]
 WantedBy = nersc-ready.target

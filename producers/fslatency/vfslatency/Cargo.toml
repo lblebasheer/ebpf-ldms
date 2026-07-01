@@ -1,12 +1,12 @@
 [package]
-name = "nerscfslat"
+name = "vfslatency"
 version.workspace = true
 edition.workspace = true
 
 license.workspace = true
 
 [dependencies]
-nerscfslat-common = { path = "../nerscfslat-common", features = ["user"] }
+vfslatency-common = { path = "../vfslatency-common", features = ["user"] }
 
 anyhow = { workspace = true, default-features = true }
 aya = { workspace = true }
@@ -32,21 +32,21 @@ cargo_metadata = { workspace = true }
 # Finally note that *any* usage of `artifact = ...` in *any* Cargo.toml in the workspace breaks
 # workflows with stable cargo; stable cargo outright refuses to load manifests that use unstable
 # features.
-nerscfslat-ebpf = { path = "../nerscfslat-ebpf" }
+vfslatency-ebpf = { path = "../vfslatency-ebpf" }
 
 [[bin]]
-name = "nerscfslat"
+name = "vfslatency"
 path = "src/main.rs"
 
 [package.metadata.generate-rpm]
-name = "nerscfslat"
+name = "vfslatency"
 license = "BSD-3-Clause-LBNL"
 summary = "Measure latency of filesystem calls"
 auto-req = "disabled"
 assets = [
-    { source = "../../../target/release/nerscfslat", dest = "/usr/sbin/nerscfslat", mode = "755" },
-    { source = "../deploy/nerscfslat_load_prefixes.sh", dest = "/usr/local/sbin/nerscfslat_load_prefixes.sh", mode = "755" },
-    { source = "../deploy/nersc-ebpf-nerscfslat.service", dest = "/etc/systemd/system/nersc-ebpf-nerscfslat.service", mode = "644" },
+    { source = "../../../target/release/vfslatency", dest = "/usr/sbin/vfslatency", mode = "755" },
+    { source = "../deploy/vfslatency_load_prefixes.sh", dest = "/usr/local/sbin/vfslatency_load_prefixes.sh", mode = "755" },
+    { source = "../deploy/vfslatency.service", dest = "/etc/systemd/system/vfslatency.service", mode = "644" },
 ]
 post_install_script = """\
     if [ -x /usr/bin/systemctl ]; then
@@ -56,7 +56,7 @@ post_install_script = """\
             if [ "$YAST_IS_RUNNING" != "instsys" ]; then
                     /usr/bin/systemctl daemon-reload || :
             fi
-            for service in nersc-ebpf-nerscfslat.service ; do
+            for service in vfslatency.service ; do
                     sysv_service=${service%.*}
 
                     if [ -e /run/systemd/rpm/needs-preset/$service ]; then
@@ -75,14 +75,14 @@ pre_uninstall_script = """\
     test -n "$FIRST_ARG" || FIRST_ARG="$1"
     if [ "$FIRST_ARG" -eq 0 -a -x /usr/bin/systemctl ]; then
             # Package removal, not upgrade
-            /usr/bin/systemctl --no-reload disable nersc-ebpf-nerscfslat.service || :
+            /usr/bin/systemctl --no-reload disable vfslatency.service || :
             (
                     test "$YAST_IS_RUNNING" = instsys && exit 0
                     test -f /etc/sysconfig/services -a \
                          -z "$DISABLE_STOP_ON_REMOVAL" && . /etc/sysconfig/services
                     test "$DISABLE_STOP_ON_REMOVAL" = yes -o \
                          "$DISABLE_STOP_ON_REMOVAL" = 1 && exit 0
-                    /usr/bin/systemctl stop nersc-ebpf-nerscfslat.service
+                    /usr/bin/systemctl stop vfslatency.service
             ) || :
     fi
     """
@@ -91,7 +91,7 @@ post_uninstall_script = """\
 
     if [ $1 -eq 0 ]; then
             # Package removal
-            for service in nersc-ebpf-nerscfslat.service ; do
+            for service in vfslatency.service ; do
                     sysv_service="${service%.*}"
                     rm -f "/var/lib/systemd/migrated/$sysv_service" || :
             done
@@ -109,7 +109,7 @@ post_uninstall_script = """\
                                  -z "$DISABLE_RESTART_ON_UPDATE" && . /etc/sysconfig/services
                             test "$DISABLE_RESTART_ON_UPDATE" = yes -o \
                                  "$DISABLE_RESTART_ON_UPDATE" = 1 && exit 0
-                            /usr/bin/systemctl try-restart nersc-ebpf-nerscfslat.service
+                            /usr/bin/systemctl try-restart vfslatency.service
                     ) || :
             fi
     fi

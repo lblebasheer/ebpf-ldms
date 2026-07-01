@@ -1,15 +1,15 @@
 [package]
-name = "nerscfslat-ebpf"
+name = "vfslatency-ebpf"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
-nerscfslat-common = { path = "../nerscfslat-common" }
+vfslatency-common = { path = "../vfslatency-common" }
 aya-ebpf = { workspace = true }
 
 [build-dependencies]
 which = { workspace = true }
 
 [[bin]]
-name = "nerscfslat-ebpf"
+name = "vfslatency-ebpf"
 path = "src/main.rs"

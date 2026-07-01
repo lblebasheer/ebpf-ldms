@@ -5,7 +5,7 @@ use aya_ebpf::{
     macros::{fentry, fexit},
     programs::{FEntryContext, FExitContext},
 };
-use nerscfslat_common::{
+use vfslatency_common::{
     maps::{CLOSE_STATS, FSYNC_STATS, READ_STATS, READV_STATS, WRITE_STATS, WRITEV_STATS},
     try_fslat_entry, try_fslat_exit,
 };
