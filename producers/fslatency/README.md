@@ -5,7 +5,7 @@ An eBPF-based filesystem latency monitor for Linux, built with the
 to measure the latency of read/write-path filesystem operations, aggregates the
 results per filesystem path prefix, and publishes them into a shared BPF ring
 buffer for downstream consumption by the
-[nersc-ebpf-streamer](https://gitlab.nersc.gov/ebasheer/ebpf-ldms-streamer)
+[ebpf-streamer](../../../ebpf-ldms)
 daemon.
 
 ## Motivation
