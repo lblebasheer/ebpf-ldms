@@ -1,5 +1,5 @@
 [package]
-name = "nerscfslat-common"
+name = "vfslatency-common"
 version.workspace = true
 edition.workspace = true
 

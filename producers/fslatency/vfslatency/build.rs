@@ -7,7 +7,7 @@ fn main() -> anyhow::Result<()> {
         .exec()
         .context("MetadataCommand::exec")?;
 
-    let ebpf_crate_names = ["nerscfslat-ebpf"];
+    let ebpf_crate_names = ["vfslatency-ebpf"];
 
     let found: Vec<_> = ebpf_crate_names
         .iter()

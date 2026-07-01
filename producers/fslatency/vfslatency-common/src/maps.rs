@@ -9,7 +9,7 @@ use bare_metal_modulo::ModNumC;
 
 use crate::constants::*;
 
-// Global counter. per ebpf program (nerscfslat_ebpf_close, nerscfslat-ebpf-fsync ...etc)
+// Global counter. per ebpf program
 #[map]
 pub static COUNTER: Array<u64> = Array::with_max_entries(1, 0);
 

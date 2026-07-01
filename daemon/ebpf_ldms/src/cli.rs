@@ -10,7 +10,7 @@ use log::warn;
 #[command(about = env!("CARGO_PKG_DESCRIPTION"), long_about = None)]
 pub struct EbpfLdms {
     /// Name of LDMS stream to which messages are published
-    #[arg(id="stream",long,default_value_t = String::from("nersc"),value_name="STREAM")]
+    #[arg(id="stream",long,default_value_t = String::from("ebpf"),value_name="STREAM")]
     pub stream: String,
     /// Average message rate limit for an individual producer in messages/interval (see --interval)
     #[arg(

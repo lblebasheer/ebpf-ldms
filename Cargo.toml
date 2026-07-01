@@ -3,12 +3,12 @@ resolver = "2"
 members = [
     "daemon/ebpf_ldms",
     "daemon/ldms_stream",
-    "producers/fslatency/nerscfslat",
-    "producers/fslatency/nerscfslat-common",
+    "producers/fslatency/vfslatency",
+    "producers/fslatency/vfslatency-common",
 ]
 default-members = [
     "daemon/ebpf_ldms",
-    "producers/fslatency/nerscfslat",
+    "producers/fslatency/vfslatency",
 ]
 
 [workspace.package]
