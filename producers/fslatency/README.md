@@ -107,9 +107,9 @@ Each record written to the ring buffer is a CBOR map. Example:
 ```
 
 
-## Integration with nersc-ebpf-ldms
+## Integration with ebpf-ldms
 
-[nersc-ebpf-ldms](https://gitlab.nersc.gov/ebasheer/ebpf-ldms-streamer) is
+[ebpf-ldms](https://gitlab.nersc.gov/ebasheer/ebpf-ldms-streamer) is
 a companion daemon that runs alongside `nerscfslat`. It reads CBOR records from
 the `LDMS_SHARED_STREAM` ring buffer and forwards them into
 [LDMS](https://ovis-hpc.readthedocs.io/en/latest/ldms/ldms-quickstart.html)

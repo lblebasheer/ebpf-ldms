@@ -1,7 +1,7 @@
 [Unit]
 Description = ebpf filesystem latency monitor
-After = nersc-ebpf-ldms.service
-BindsTo = nersc-ebpf-ldms.service
+After = ebpf-ldms.service
+BindsTo = ebpf-ldms.service
 
 [Service]
 Type = simple

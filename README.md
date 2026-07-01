@@ -114,7 +114,7 @@ Options:
 The ebpf_ldms RPM includes a systemd service unit file.
 
 ```
-systemctl start nersc-ebpf-ldms.service
+systemctl start ebpf-ldms.service
 ```
 
 ## License
