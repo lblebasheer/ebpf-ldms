@@ -26,16 +26,14 @@ precision, broken down by filesystem — without modifying any application code.
 
 ### eBPF Probes
 
-Eight kernel functions are instrumented using `fentry`/`fexit` tracepoints:
+Six kernel functions are instrumented using `fentry`/`fexit` tracepoints:
 
 | Kernel function    | Operation                     |
 |--------------------|-------------------------------|
 | `vfs_write`        | Single-buffer write           |
 | `vfs_writev`       | Vectored (scatter-gather) write |
-| `vfs_iter_write`    | Vectored (scatter-gather) write |
-| `vfs_read`        | Single-buffer read           |
-| `vfs_readv`       | Vectored (scatter-gather) read |
-| `vfs_iter_read`    | Vectored (scatter-gather) read |
+| `vfs_read`         | Single-buffer read            |
+| `vfs_readv`        | Vectored (scatter-gather) read |
 | `vfs_fsync_range`  | fsync / data flush            |
 | `filp_close`       | File close                    |
 
@@ -155,18 +153,14 @@ the userspace binary.
 
 ## Crate Structure
 
+All six eBPF probes live in a single `vfslatency-ebpf` crate. A macro generates
+the `fentry`/`fexit` pair for each instrumented kernel function:
+
 | Crate                      | Description                                              |
 |----------------------------|----------------------------------------------------------|
 | `vfslatency`               | Userspace driver: loads and attaches eBPF programs       |
 | `vfslatency-common`        | Shared eBPF logic: path resolution, stats, ring buffer writes |
-| `vfslatency-ebpf-close`    | eBPF probe for `filp_close`                              |
-| `vfslatency-ebpf-fsync`    | eBPF probe for `vfs_fsync_range`                         |
-| `vfslatency-ebpf-write`    | eBPF probe for `vfs_write`                               |
-| `vfslatency-ebpf-writev`   | eBPF probe for `vfs_writev`                              |
-| `vfslatency-ebpf-iterwrite`| eBPF probe for `vfs_iter_write`                          |
-| `vfslatency-ebpf-read`     | eBPF probe for `vfs_read`                                |
-| `vfslatency-ebpf-readv`    | eBPF probe for `vfs_readv`                               |
-| `vfslatency-ebpf-iterread` | eBPF probe for `vfs_iter_read`                           |
+| `vfslatency-ebpf`          | Single eBPF crate containing probes for: `filp_close`, `vfs_fsync_range`, `vfs_write`, `vfs_writev`, `vfs_read`, `vfs_readv` |
 
 ## License
 
