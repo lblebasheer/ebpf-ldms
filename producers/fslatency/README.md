@@ -67,8 +67,9 @@ Prefixes are loaded at startup via `bpftool` using the
 
 ### Aggregation and the Ring Buffer
 
-Within each 1s aggregation window, per-prefix statistics are accumulated
-in a BPF array map (`FSLATENCYSTATS`) entirely in the kernel:
+Within each 1s aggregation window, per-prefix statistics are accumulated in a
+BPF array map for each of the traced functions. This happens entirely in the
+kernel. Stats collected are.
 
 - **min latency** (ns)
 - **max latency** (ns)
@@ -76,10 +77,10 @@ in a BPF array map (`FSLATENCYSTATS`) entirely in the kernel:
 - **total bytes** (bytes)
 - **sample count**
 
-At the end of each window, a summary record is serialized as a
-**CBOR-encoded map** and written into a **pinned BPF ring buffer** named
-`LDMS_SHARED_STREAM`. The ring buffer is pinned in the BPF filesystem, making
-it accessible to ebpf_ldms daemon.
+At the end of each window, a stats record is serialized as a **CBOR-encoded
+map** and written into a **pinned BPF ring buffer** named `LDMS_SHARED_STREAM`.
+The ring buffer is pinned in the BPF filesystem, making it accessible to
+the ebpf_ldms daemon.
 
 ### Message Format
 
@@ -125,14 +126,15 @@ PREFIXES=/global/u1 /global/u2 /global/cfs /pscratch /mscratch /ascratch
 
 After `vfslatency` starts and its eBPF maps are loaded, the
 `vfslatency_load_prefixes.sh` script uses `bpftool` to write the prefix list
-into the `FSLATENCYSTATS` BPF array map of each active probe. Up to **8 prefixes**
-are supported; each prefix must be at most **32 characters** long.
+into the per-vfs-function BPF array map of each active probe. Up to **8
+prefixes** are supported; each prefix must be at most **32 characters** long.
 
 ## Deployment
 
 The project produces an RPM via
 [`cargo-generate-rpm`](https://github.com/cat-in-136/cargo-generate-rpm).
 The RPM installs a systemd service (`vfslatency.service`).
+
 ## Building from Source
 
 ### Prerequisites
@@ -143,13 +145,20 @@ The RPM installs a systemd service (`vfslatency.service`).
 
 ### Build & Run
 
+From the root of the repository
+
 ```shell
-cargo build --release
-cargo run --release
+cargo build --release -p vfslatency
 ```
 
 Cargo build scripts compile the eBPF programs automatically and embed them in
 the userspace binary.
+
+### Build RPM
+
+```shell
+cargo generate-rpm -p producer/fslatency/vfslatency
+```
 
 ## Crate Structure
 
