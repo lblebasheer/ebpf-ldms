@@ -108,6 +108,8 @@ fn main() -> anyhow::Result<()> {
         ("vfs_writev_entry", "vfs_writev_exit", "vfs_writev"),
         ("vfs_read_entry", "vfs_read_exit", "vfs_read"),
         ("vfs_readv_entry", "vfs_readv_exit", "vfs_readv"),
+        ("kernel_read_entry", "kernel_read_exit", "kernel_read"),
+        ("kernel_write_entry", "kernel_write_exit", "kernel_write"),
     ];
 
     for (entry, exit, fn_name) in &probes {

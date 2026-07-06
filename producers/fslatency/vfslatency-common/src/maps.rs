@@ -33,6 +33,12 @@ pub static mut READ_STATS: btf_maps::Array<FsLatencyStats, { NUM_PATH_PREFIX as 
 #[btf_map]
 pub static mut READV_STATS: btf_maps::Array<FsLatencyStats, { NUM_PATH_PREFIX as usize }, 0> =
     btf_maps::Array::new();
+#[btf_map]
+pub static mut KREAD_STATS: btf_maps::Array<FsLatencyStats, { NUM_PATH_PREFIX as usize }, 0> =
+    btf_maps::Array::new();
+#[btf_map]
+pub static mut KWRITE_STATS: btf_maps::Array<FsLatencyStats, { NUM_PATH_PREFIX as usize }, 0> =
+    btf_maps::Array::new();
 
 // Used as a scratch area to hold the assembled path constructed by partial_d_path() from struct path
 #[map]
