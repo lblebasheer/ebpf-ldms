@@ -2,21 +2,21 @@
 mod cli;
 
 use std::{
-    collections::{hash_map::Entry, HashMap},
+    collections::{HashMap, hash_map::Entry},
     convert::TryFrom,
     path::Path,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use aya::maps::{Map, MapData, RingBuf};
-use burster::{sliding_window_counter, Limiter, SlidingWindowCounter};
+use burster::{Limiter, SlidingWindowCounter, sliding_window_counter};
 use ciborium::de::from_reader;
 use clap::Parser;
 use cli::ValidateClap;
 use ftail::Ftail;
 use ldms_stream::SockStream;
-use log::{debug, error, trace, warn, LevelFilter};
-use smol::{block_on, Async};
+use log::{LevelFilter, debug, error, trace, warn};
+use smol::{Async, block_on};
 
 fn map_insert_key<T: Into<serde_json::Value>>(obj: &mut serde_json::Value, key: &str, value: T) {
     obj.as_object_mut()
@@ -79,7 +79,9 @@ async fn ring_loop(
             let (id, timestamp_monotonic) = (&serde_v["id"], &serde_v["timestamp_monotonic"]);
 
             if *id == serde_json::Value::Null || *timestamp_monotonic == serde_json::Value::Null {
-                warn!("\"id\", \"timestamp_monotonic\" fields not found in message. Skipping message.");
+                warn!(
+                    "\"id\", \"timestamp_monotonic\" fields not found in message. Skipping message."
+                );
                 continue;
             }
 

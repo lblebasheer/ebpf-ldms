@@ -6,7 +6,10 @@ use aya_ebpf::{
     programs::{FEntryContext, FExitContext},
 };
 use vfslatency_common::{
-    maps::{CLOSE_STATS, FSYNC_STATS, READ_STATS, READV_STATS, WRITE_STATS, WRITEV_STATS, KREAD_STATS, KWRITE_STATS},
+    maps::{
+        CLOSE_STATS, FSYNC_STATS, KREAD_STATS, KWRITE_STATS, READ_STATS, READV_STATS, WRITE_STATS,
+        WRITEV_STATS,
+    },
     try_fslat_entry, try_fslat_exit,
 };
 
@@ -55,8 +58,20 @@ fslat_probe!(
 );
 fslat_probe!(vfs_read_entry, vfs_read_exit, "vfs_read", 4, READ_STATS);
 fslat_probe!(vfs_readv_entry, vfs_readv_exit, "vfs_readv", 5, READV_STATS);
-fslat_probe!(kernel_read_entry, kernel_read_exit, "kernel_read", 4, KREAD_STATS);
-fslat_probe!(kernel_write_entry, kernel_write_exit, "kernel_write", 4, KWRITE_STATS);
+fslat_probe!(
+    kernel_read_entry,
+    kernel_read_exit,
+    "kernel_read",
+    4,
+    KREAD_STATS
+);
+fslat_probe!(
+    kernel_write_entry,
+    kernel_write_exit,
+    "kernel_write",
+    4,
+    KWRITE_STATS
+);
 
 #[cfg(not(test))]
 #[panic_handler]
