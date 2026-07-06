@@ -38,6 +38,9 @@ pub fn try_fslat_entry(ctx: FEntryContext, _filpop: &str) -> Result<u32, u32> {
     if ret < 0 {
         return Err(1);
     }
+    trace!(ctx, "partial_d_path: {}", unsafe {
+        core::str::from_utf8_unchecked(&*pathbuf_ptr)
+    });
     {
         let entryrec = EntryRec {
             timestamp: now,
