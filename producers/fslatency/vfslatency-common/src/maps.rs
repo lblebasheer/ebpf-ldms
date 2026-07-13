@@ -2,7 +2,7 @@ use aya_ebpf::{
     bindings::{bpf_dynptr, bpf_spin_lock},
     btf_maps,
     macros::{btf_map, map},
-    maps::{Array, LruHashMap, PerCpuArray, RingBuf},
+    maps::{Array, HashMap, LruHashMap, PerCpuArray, RingBuf},
     programs::FEntryContext,
 };
 use bare_metal_modulo::ModNumC;
@@ -54,6 +54,28 @@ pub static PTRLIST: LruHashMap<PidTgid, EntryRec> = LruHashMap::with_max_entries
 
 #[map]
 pub static LDMS_SHARED_STREAM: RingBuf = RingBuf::pinned(1024, 0);
+
+// --- Profiling maps ---
+
+// Control register: 0 = no data, 1 = reset signal, >1 = timestamp of last reset (ns)
+#[map]
+pub static PROF_CTRL: Array<u64> = Array::with_max_entries(1, 0);
+
+// Path resolution time histogram (log2 bucket key, count value)
+#[map]
+pub static PROF_PATH_RES_HIST: HashMap<u32, u64> = HashMap::with_max_entries(64, 0);
+
+// Exit probe time histogram (log2 bucket key, count value)
+#[map]
+pub static PROF_EXIT_HIST: HashMap<u32, u64> = HashMap::with_max_entries(64, 0);
+
+// Path walk iteration count histogram (log2 bucket key, count value)
+#[map]
+pub static PROF_WALK_ITERS_HIST: HashMap<u32, u64> = HashMap::with_max_entries(64, 0);
+
+// Ring buffer drop counter
+#[map]
+pub static PROF_RINGBUF_DROPS: Array<u64> = Array::with_max_entries(1, 0);
 
 use crate::vmlinux;
 
