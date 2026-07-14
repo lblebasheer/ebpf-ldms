@@ -18,6 +18,8 @@ import tty
 MAPS = {
     "PROF_CTRL": {"key": "PROF_CTRL", "type": "ctrl"},
     "PROF_PATH_RES_HIST": {"key": "PROF_PATH_RES", "type": "hist_log2", "label": "Path Resolution (ns)"},
+    "PROF_PATH_WALK_HIST": {"key": "PROF_PATH_WALK", "type": "hist_log2", "label": "Path Walk (ns)"},
+    "PROF_PATH_ASSEMBLY_HIST": {"key": "PROF_PATH_ASSEM", "type": "hist_log2", "label": "Path Assembly (ns)"},
     "PROF_EXIT_HIST": {"key": "PROF_EXIT_HIST", "type": "hist_log2", "label": "Exit Probe (ns)"},
     "PROF_WALK_ITERS_HIST": {"key": "PROF_WALK_ITERS", "type": "hist_linear", "label": "Walk Iterations"},
     "PROF_RINGBUF_DROPS": {"key": "PROF_RINGBUF", "type": "counter", "label": "Ringbuf Drops"},
@@ -135,7 +137,13 @@ def render_all(map_ids):
         lines.append("  no data yet")
     lines.append("")
 
-    for name in ("PROF_PATH_RES_HIST", "PROF_EXIT_HIST", "PROF_WALK_ITERS_HIST"):
+    for name in (
+        "PROF_PATH_RES_HIST",
+        "PROF_PATH_WALK_HIST",
+        "PROF_PATH_ASSEMBLY_HIST",
+        "PROF_EXIT_HIST",
+        "PROF_WALK_ITERS_HIST",
+    ):
         info = MAPS[name]
         mid = map_ids.get(name)
         if mid:

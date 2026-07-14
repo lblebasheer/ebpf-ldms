@@ -11,7 +11,7 @@ use aya_ebpf::{
         bpf_loop, bpf_probe_read_kernel, bpf_probe_read_kernel_str_bytes, bpf_spin_lock,
         bpf_spin_unlock,
     },
-    maps::HashMap,
+    maps::Array,
     programs::{FEntryContext, FExitContext},
 };
 use aya_log_ebpf::{debug, error, trace};
@@ -35,11 +35,9 @@ fn log2_bucket(val: u64) -> u32 {
     64 - val.leading_zeros()
 }
 
-unsafe fn hist_increment(hist: &HashMap<u32, u64>, bucket: u32) {
-    if let Some(count) = hist.get_ptr_mut(&bucket) {
+unsafe fn hist_increment(hist: &Array<u64>, bucket: u32) {
+    if let Some(count) = hist.get_ptr_mut(bucket) {
         unsafe { *count += 1 };
-    } else {
-        let _ = hist.insert(&bucket, &1u64, 0);
     }
 }
 
@@ -48,10 +46,22 @@ unsafe fn check_prof_reset() {
         return;
     };
     if unsafe { *ctrl } == 1 {
-        for i in 0u32..64 {
-            let _ = PROF_PATH_RES_HIST.remove(&i);
-            let _ = PROF_EXIT_HIST.remove(&i);
-            let _ = PROF_WALK_ITERS_HIST.remove(&i);
+        for i in 0u32..PROF_HIST_BUCKETS {
+            if let Some(count) = PROF_PATH_RES_HIST.get_ptr_mut(i) {
+                unsafe { *count = 0 };
+            }
+            if let Some(count) = PROF_PATH_WALK_HIST.get_ptr_mut(i) {
+                unsafe { *count = 0 };
+            }
+            if let Some(count) = PROF_PATH_ASSEMBLY_HIST.get_ptr_mut(i) {
+                unsafe { *count = 0 };
+            }
+            if let Some(count) = PROF_EXIT_HIST.get_ptr_mut(i) {
+                unsafe { *count = 0 };
+            }
+            if let Some(count) = PROF_WALK_ITERS_HIST.get_ptr_mut(i) {
+                unsafe { *count = 0 };
+            }
         }
         unsafe { *ctrl = bpf_ktime_get_ns() };
     }
@@ -67,27 +77,30 @@ pub fn try_fslat_entry(ctx: FEntryContext, _filpop: &str) -> Result<u32, u32> {
     };
 
     let mut walk_iters: u32 = 0;
+    let mut walk_ns: u64 = 0;
+    let mut assembly_ns: u64 = 0;
     let t_start = unsafe { bpf_ktime_get_ns() };
     let ret = partial_d_path(
         &ctx,
         pathptr as *const vmlinux::path,
         pathbuf_ptr,
         &mut walk_iters,
+        &mut walk_ns,
+        &mut assembly_ns,
     );
     let t_end = unsafe { bpf_ktime_get_ns() };
 
     unsafe {
         let bucket = log2_bucket(t_end - t_start);
         hist_increment(&PROF_PATH_RES_HIST, bucket);
+        hist_increment(&PROF_PATH_WALK_HIST, log2_bucket(walk_ns));
+        hist_increment(&PROF_PATH_ASSEMBLY_HIST, log2_bucket(assembly_ns));
         hist_increment(&PROF_WALK_ITERS_HIST, walk_iters);
     }
 
     if ret < 0 {
         return Err(1);
     }
-    trace!(ctx, "partial_d_path: {}", unsafe {
-        core::str::from_utf8_unchecked(&*pathbuf_ptr)
-    });
     {
         let entryrec = EntryRec {
             timestamp: t_start,
@@ -119,6 +132,8 @@ pub fn partial_d_path(
     path: *const vmlinux::path,
     pathfrag: *mut PathSlice,
     walk_iters: *mut u32,
+    walk_ns: *mut u64,
+    assembly_ns: *mut u64,
 ) -> i32 {
     let mut pathfrag_dynptr = bpf_dynptr {
         __opaque: [0u64; 2],
@@ -155,6 +170,7 @@ pub fn partial_d_path(
         is_absolute: false,
         ctx,
     };
+    let walk_start = unsafe { bpf_ktime_get_ns() };
     unsafe {
         bpf_loop(
             MAX_PARENT_LOOP,
@@ -163,9 +179,11 @@ pub fn partial_d_path(
             0u64,
         );
     }
+    let walk_end = unsafe { bpf_ktime_get_ns() };
 
     unsafe {
         *walk_iters = walk_ctx.loop_ctr;
+        *walk_ns = walk_end - walk_start;
     }
 
     let mut assem_ctx = AssembleCtx {
@@ -178,6 +196,7 @@ pub fn partial_d_path(
         is_absolute: walk_ctx.is_absolute,
         ctx,
     };
+    let assembly_start = unsafe { bpf_ktime_get_ns() };
     unsafe {
         // If we have an absolute pathname
         // prepend a / to the path
@@ -197,6 +216,10 @@ pub fn partial_d_path(
             &mut assem_ctx as *mut AssembleCtx as *mut c_void,
             0_u64,
         );
+    }
+    let assembly_end = unsafe { bpf_ktime_get_ns() };
+    unsafe {
+        *assembly_ns = assembly_end - assembly_start;
     }
     assem_ctx.copied as i32
 }

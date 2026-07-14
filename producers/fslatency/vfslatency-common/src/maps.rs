@@ -2,7 +2,7 @@ use aya_ebpf::{
     bindings::{bpf_dynptr, bpf_spin_lock},
     btf_maps,
     macros::{btf_map, map},
-    maps::{Array, HashMap, LruHashMap, PerCpuArray, RingBuf},
+    maps::{Array, LruHashMap, PerCpuArray, RingBuf},
     programs::FEntryContext,
 };
 use bare_metal_modulo::ModNumC;
@@ -63,15 +63,23 @@ pub static PROF_CTRL: Array<u64> = Array::with_max_entries(1, 0);
 
 // Path resolution time histogram (log2 bucket key, count value)
 #[map]
-pub static PROF_PATH_RES_HIST: HashMap<u32, u64> = HashMap::with_max_entries(64, 0);
+pub static PROF_PATH_RES_HIST: Array<u64> = Array::with_max_entries(PROF_HIST_BUCKETS, 0);
+
+// Dentry walk time histogram (log2 bucket key, count value)
+#[map]
+pub static PROF_PATH_WALK_HIST: Array<u64> = Array::with_max_entries(PROF_HIST_BUCKETS, 0);
+
+// Path assembly time histogram (log2 bucket key, count value)
+#[map]
+pub static PROF_PATH_ASSEMBLY_HIST: Array<u64> = Array::with_max_entries(PROF_HIST_BUCKETS, 0);
 
 // Exit probe time histogram (log2 bucket key, count value)
 #[map]
-pub static PROF_EXIT_HIST: HashMap<u32, u64> = HashMap::with_max_entries(64, 0);
+pub static PROF_EXIT_HIST: Array<u64> = Array::with_max_entries(PROF_HIST_BUCKETS, 0);
 
 // Path walk iteration count histogram (log2 bucket key, count value)
 #[map]
-pub static PROF_WALK_ITERS_HIST: HashMap<u32, u64> = HashMap::with_max_entries(64, 0);
+pub static PROF_WALK_ITERS_HIST: Array<u64> = Array::with_max_entries(PROF_HIST_BUCKETS, 0);
 
 // Ring buffer drop counter
 #[map]

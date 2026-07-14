@@ -12,7 +12,7 @@ default-members = [
 ]
 
 [workspace.package]
-version = "0.17.1"
+version = "0.17.2"
 license = "BSD-3-Clause-LBNL"
 edition = "2024"
 
@@ -44,5 +44,4 @@ clap = { version = "4.5.40", features = ["derive"] }
 ciborium = "0.2.2"
 ftail = "0.3.1"
 burster = "0.1.2"
-
 
