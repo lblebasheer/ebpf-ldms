@@ -6,4 +6,3 @@ pub(crate) const BUFSIZE: usize = 1024;
 pub(crate) const NUM_COMP: u32 = 16;
 pub(crate) const MAX_PARENT: u32 = 32;
 pub(crate) const MAX_PARENT_LOOP: u32 = 64;
-pub(crate) const PROF_HIST_BUCKETS: u32 = 65;

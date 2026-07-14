@@ -11,7 +11,7 @@ use aya_ebpf::{
         bpf_loop, bpf_probe_read_kernel, bpf_probe_read_kernel_str_bytes, bpf_spin_lock,
         bpf_spin_unlock,
     },
-    maps::Array,
+    maps::HashMap,
     programs::{FEntryContext, FExitContext},
 };
 use aya_log_ebpf::{debug, error, trace};
@@ -35,9 +35,11 @@ fn log2_bucket(val: u64) -> u32 {
     64 - val.leading_zeros()
 }
 
-unsafe fn hist_increment(hist: &Array<u64>, bucket: u32) {
-    if let Some(count) = hist.get_ptr_mut(bucket) {
+unsafe fn hist_increment(hist: &HashMap<u32, u64>, bucket: u32) {
+    if let Some(count) = hist.get_ptr_mut(&bucket) {
         unsafe { *count += 1 };
+    } else {
+        let _ = hist.insert(&bucket, &1u64, 0);
     }
 }
 
@@ -46,22 +48,12 @@ unsafe fn check_prof_reset() {
         return;
     };
     if unsafe { *ctrl } == 1 {
-        for i in 0u32..PROF_HIST_BUCKETS {
-            if let Some(count) = PROF_PATH_RES_HIST.get_ptr_mut(i) {
-                unsafe { *count = 0 };
-            }
-            if let Some(count) = PROF_PATH_WALK_HIST.get_ptr_mut(i) {
-                unsafe { *count = 0 };
-            }
-            if let Some(count) = PROF_PATH_ASSEMBLY_HIST.get_ptr_mut(i) {
-                unsafe { *count = 0 };
-            }
-            if let Some(count) = PROF_EXIT_HIST.get_ptr_mut(i) {
-                unsafe { *count = 0 };
-            }
-            if let Some(count) = PROF_WALK_ITERS_HIST.get_ptr_mut(i) {
-                unsafe { *count = 0 };
-            }
+        for i in 0u32..64 {
+            let _ = PROF_PATH_RES_HIST.remove(&i);
+            let _ = PROF_PATH_WALK_HIST.remove(&i);
+            let _ = PROF_PATH_ASSEMBLY_HIST.remove(&i);
+            let _ = PROF_EXIT_HIST.remove(&i);
+            let _ = PROF_WALK_ITERS_HIST.remove(&i);
         }
         unsafe { *ctrl = bpf_ktime_get_ns() };
     }
@@ -101,6 +93,10 @@ pub fn try_fslat_entry(ctx: FEntryContext, _filpop: &str) -> Result<u32, u32> {
     if ret < 0 {
         return Err(1);
     }
+    #[cfg(debug_assertions)]
+    trace!(ctx, "partial_d_path: {}", unsafe {
+        core::str::from_utf8_unchecked(&*pathbuf_ptr)
+    });
     {
         let entryrec = EntryRec {
             timestamp: t_start,
