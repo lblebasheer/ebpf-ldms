@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""profstat - live profiler stats for vfslatency eBPF maps.
+"""vfslatency-profiler - live profiler stats for vfslatency eBPF maps.
 
-Reads PROF_* maps via bpftool and displays a continuously refreshing
-histogram view. Press 'r' to reset, 'q' to quit.
+Reads PROF_* maps via bpftool and shows one histogram at a time.
+Keys: < / > cycle maps, r reset, q quit.
 """
 import json
 import os
@@ -27,6 +27,14 @@ MAPS = {
 
 REFRESH_SEC = 1.0
 BAR_WIDTH = 40
+
+HIST_NAMES = [
+    "PROF_PATH_RES_HIST",
+    "PROF_PATH_WALK_HIST",
+    "PROF_PATH_ASSEMBLY_HIST",
+    "PROF_EXIT_HIST",
+    "PROF_WALK_ITERS_HIST",
+]
 
 
 def bpftool(*args):
@@ -102,63 +110,43 @@ def fmt_ns(ns):
         return f"{ns/1_000_000:.2f}ms"
 
 
-def render_bar(count, max_count):
-    if max_count == 0:
-        return ""
-    filled = int((count / max_count) * BAR_WIDTH)
-    return "#" * filled
+def render(map_ids, hist_idx):
+    name = HIST_NAMES[hist_idx]
+    info = MAPS[name]
+    log2 = info["type"] == "hist_log2"
+    total = len(HIST_NAMES)
 
+    lines = [
+        f"vfslatency profiler  [{hist_idx+1}/{total}]",
+        f"  < / > cycle  r: reset  q: quit",
+        "",
+        f"  {info['label']}",
+    ]
 
-def render(entries, label, log2=True):
-    lines = [f"  {label}"]
+    mid = map_ids.get(name)
+    if not mid:
+        lines.append("    (map not found)")
+        return "\n".join(lines)
+
+    entries = read_map(mid)
     nonzero = [(k, v) for k, v in entries if v > 0]
     if not nonzero:
         lines.append("    (no data)")
-        return lines
+        return "\n".join(lines)
+
     max_count = max(v for _, v in nonzero)
     for key, count in sorted(nonzero):
         if log2:
             lbl = "0" if key == 0 else fmt_ns(1 << key)
         else:
             lbl = str(key)
-        bar = render_bar(count, max_count)
+        filled = int((count / max_count) * BAR_WIDTH)
+        bar = "#" * filled
         lines.append(f"  {lbl:>8} |{bar} {count}")
-    return lines
-
-
-def render_all(map_ids):
-    lines = ["vfslatency profiler  (r: reset  q: quit)", ""]
-
-    ctrl_id = map_ids.get("PROF_CTRL")
-    reset_ts = read_counter(ctrl_id) if ctrl_id else 0
-    if reset_ts > 1:
-        lines.append(f"  reset @ {reset_ts} ns")
-    else:
-        lines.append("  no data yet")
-    lines.append("")
-
-    for name in (
-        "PROF_PATH_RES_HIST",
-        "PROF_PATH_WALK_HIST",
-        "PROF_PATH_ASSEMBLY_HIST",
-        "PROF_EXIT_HIST",
-        "PROF_WALK_ITERS_HIST",
-    ):
-        info = MAPS[name]
-        mid = map_ids.get(name)
-        if mid:
-            entries = read_map(mid)
-            log2 = info["type"] == "hist_log2"
-            lines.extend(render(entries, info["label"], log2))
-        else:
-            lines.append(f"  {info['label']}: map not found")
-        lines.append("")
 
     drops_id = map_ids.get("PROF_RINGBUF_DROPS")
     if drops_id:
-        lines.append(f"  Ringbuf Drops: {read_counter(drops_id)}")
-    else:
-        lines.append("  Ringbuf Drops: map not found")
+        lines.append(f"\n  Ringbuf Drops: {read_counter(drops_id)}")
 
     return "\n".join(lines)
 
@@ -175,13 +163,14 @@ def main():
             time.sleep(1)
     print(f"\rFound {len(map_ids)} maps                    ")
 
+    hist_idx = 0
     fd = sys.stdin.fileno()
     old = termios.tcgetattr(fd)
     try:
         tty.setcbreak(fd)
         while True:
             os.system("clear")
-            print(render_all(map_ids))
+            print(render(map_ids, hist_idx))
             start = time.monotonic()
             while time.monotonic() - start < REFRESH_SEC:
                 if select.select([sys.stdin], [], [], 0)[0]:
@@ -191,6 +180,12 @@ def main():
                     elif ch == "r":
                         reset_maps(map_ids)
                         time.sleep(0.1)
+                        break
+                    elif ch == ">" or ch == ".":
+                        hist_idx = (hist_idx + 1) % len(HIST_NAMES)
+                        break
+                    elif ch == "<" or ch == ",":
+                        hist_idx = (hist_idx - 1) % len(HIST_NAMES)
                         break
                 time.sleep(0.05)
     finally:
