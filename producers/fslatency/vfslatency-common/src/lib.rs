@@ -35,7 +35,7 @@ fn log2_bucket(val: u64) -> u32 {
     64 - val.leading_zeros()
 }
 
-unsafe fn hist_increment(hist: &HashMap<u32, u64>, bucket: u32) {
+fn hist_increment(hist: &HashMap<u32, u64>, bucket: u32) {
     if let Some(count) = hist.get_ptr_mut(&bucket) {
         unsafe { *count += 1 };
     } else {
@@ -43,7 +43,7 @@ unsafe fn hist_increment(hist: &HashMap<u32, u64>, bucket: u32) {
     }
 }
 
-unsafe fn check_prof_reset() {
+fn check_prof_reset() {
     let Some(ctrl) = PROF_CTRL.get_ptr_mut(0) else {
         return;
     };
@@ -60,7 +60,7 @@ unsafe fn check_prof_reset() {
 }
 
 pub fn try_fslat_entry(ctx: FEntryContext, _filpop: &str) -> Result<u32, u32> {
-    unsafe { check_prof_reset() };
+    check_prof_reset();
 
     let filp: *mut vmlinux::file = ctx.arg(0);
     let pathptr = unsafe { &raw mut (*filp).f_path };
@@ -82,13 +82,11 @@ pub fn try_fslat_entry(ctx: FEntryContext, _filpop: &str) -> Result<u32, u32> {
     );
     let t_end = unsafe { bpf_ktime_get_ns() };
 
-    unsafe {
-        let bucket = log2_bucket(t_end - t_start);
-        hist_increment(&PROF_PATH_RES_HIST, bucket);
-        hist_increment(&PROF_PATH_WALK_HIST, log2_bucket(walk_ns));
-        hist_increment(&PROF_PATH_ASSEMBLY_HIST, log2_bucket(assembly_ns));
-        hist_increment(&PROF_WALK_ITERS_HIST, walk_iters);
-    }
+    let bucket = log2_bucket(t_end - t_start);
+    hist_increment(&PROF_PATH_RES_HIST, bucket);
+    hist_increment(&PROF_PATH_WALK_HIST, log2_bucket(walk_ns));
+    hist_increment(&PROF_PATH_ASSEMBLY_HIST, log2_bucket(assembly_ns));
+    hist_increment(&PROF_WALK_ITERS_HIST, walk_iters);
 
     if ret < 0 {
         return Err(1);
@@ -342,7 +340,7 @@ pub fn try_fslat_exit(
     ret: i64,
     stats_map: &btf_maps::Array<FsLatencyStats, { NUM_PATH_PREFIX as usize }, 0>,
 ) -> Result<u32, u32> {
-    unsafe { check_prof_reset() };
+    check_prof_reset();
 
     let Some(countptr) = COUNTER.get_ptr_mut(0) else {
         return Err(1);
@@ -431,10 +429,8 @@ pub fn try_fslat_exit(
                 }
             }
             let t_end = unsafe { bpf_ktime_get_ns() };
-            unsafe {
-                let bucket = log2_bucket(t_end - t_start);
-                hist_increment(&PROF_EXIT_HIST, bucket);
-            }
+            let bucket = log2_bucket(t_end - t_start);
+            hist_increment(&PROF_EXIT_HIST, bucket);
             let _ = PTRLIST.remove(&(pid_tgid));
         }
         None => {}

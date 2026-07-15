@@ -693,7 +693,7 @@ dependencies = [
 
 [[package]]
 name = "ebpf_ldms"
-version = "0.17.4"
+version = "0.17.5"
 dependencies = [
  "anyhow",
  "async-channel 2.5.0",
@@ -1021,7 +1021,7 @@ dependencies = [
 
 [[package]]
 name = "ldms_stream"
-version = "0.17.4"
+version = "0.17.5"
 dependencies = [
  "anyhow",
 ]
@@ -1644,7 +1644,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vfslatency"
-version = "0.17.4"
+version = "0.17.5"
 dependencies = [
  "anyhow",
  "aya",
@@ -1662,7 +1662,7 @@ dependencies = [
 
 [[package]]
 name = "vfslatency-common"
-version = "0.17.4"
+version = "0.17.5"
 dependencies = [
  "aya",
  "aya-ebpf",
@@ -1673,7 +1673,7 @@ dependencies = [
 
 [[package]]
 name = "vfslatency-ebpf"
-version = "0.17.4"
+version = "0.17.5"
 dependencies = [
  "aya-ebpf",
  "vfslatency-common",
