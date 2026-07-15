@@ -11,6 +11,7 @@ use aya_ebpf::{
         bpf_loop, bpf_probe_read_kernel, bpf_probe_read_kernel_str_bytes, bpf_spin_lock,
         bpf_spin_unlock,
     },
+    maps::HashMap,
     programs::{FEntryContext, FExitContext},
 };
 use aya_log_ebpf::{debug, error, trace};
@@ -27,23 +28,76 @@ use crate::maps::*;
 mod constants;
 use crate::constants::*;
 
+fn log2_bucket(val: u64) -> u32 {
+    if val == 0 {
+        return 0;
+    }
+    64 - val.leading_zeros()
+}
+
+fn hist_increment(hist: &HashMap<u32, u64>, bucket: u32) {
+    if let Some(count) = hist.get_ptr_mut(&bucket) {
+        unsafe { *count += 1 };
+    } else {
+        let _ = hist.insert(&bucket, &1u64, 0);
+    }
+}
+
+fn check_prof_reset() {
+    let Some(ctrl) = PROF_CTRL.get_ptr_mut(0) else {
+        return;
+    };
+    if unsafe { *ctrl } == 1 {
+        for i in 0u32..64 {
+            let _ = PROF_PATH_RES_HIST.remove(&i);
+            let _ = PROF_PATH_WALK_HIST.remove(&i);
+            let _ = PROF_PATH_ASSEMBLY_HIST.remove(&i);
+            let _ = PROF_EXIT_HIST.remove(&i);
+            let _ = PROF_WALK_ITERS_HIST.remove(&i);
+        }
+        unsafe { *ctrl = bpf_ktime_get_ns() };
+    }
+}
+
 pub fn try_fslat_entry(ctx: FEntryContext, _filpop: &str) -> Result<u32, u32> {
+    check_prof_reset();
+
     let filp: *mut vmlinux::file = ctx.arg(0);
-    let now = unsafe { bpf_ktime_get_ns() };
     let pathptr = unsafe { &raw mut (*filp).f_path };
     let Some(pathbuf_ptr) = PATHBUF.get_ptr_mut(0) else {
         return Err(1);
     };
-    let ret = partial_d_path(&ctx, pathptr as *const vmlinux::path, pathbuf_ptr);
+
+    let mut walk_iters: u32 = 0;
+    let mut walk_ns: u64 = 0;
+    let mut assembly_ns: u64 = 0;
+    let t_start = unsafe { bpf_ktime_get_ns() };
+    let ret = partial_d_path(
+        &ctx,
+        pathptr as *const vmlinux::path,
+        pathbuf_ptr,
+        &mut walk_iters,
+        &mut walk_ns,
+        &mut assembly_ns,
+    );
+    let t_end = unsafe { bpf_ktime_get_ns() };
+
+    let bucket = log2_bucket(t_end - t_start);
+    hist_increment(&PROF_PATH_RES_HIST, bucket);
+    hist_increment(&PROF_PATH_WALK_HIST, log2_bucket(walk_ns));
+    hist_increment(&PROF_PATH_ASSEMBLY_HIST, log2_bucket(assembly_ns));
+    hist_increment(&PROF_WALK_ITERS_HIST, walk_iters);
+
     if ret < 0 {
         return Err(1);
     }
+    #[cfg(debug_assertions)]
     trace!(ctx, "partial_d_path: {}", unsafe {
         core::str::from_utf8_unchecked(&*pathbuf_ptr)
     });
     {
         let entryrec = EntryRec {
-            timestamp: now,
+            timestamp: t_start,
             path: unsafe { *pathbuf_ptr },
         };
         let _ = PTRLIST.insert(&(ctx.pid(), ctx.tgid()), &entryrec, 0u64);
@@ -71,6 +125,9 @@ pub fn partial_d_path(
     ctx: &FEntryContext,
     path: *const vmlinux::path,
     pathfrag: *mut PathSlice,
+    walk_iters: *mut u32,
+    walk_ns: *mut u64,
+    assembly_ns: *mut u64,
 ) -> i32 {
     let mut pathfrag_dynptr = bpf_dynptr {
         __opaque: [0u64; 2],
@@ -107,6 +164,7 @@ pub fn partial_d_path(
         is_absolute: false,
         ctx,
     };
+    let walk_start = unsafe { bpf_ktime_get_ns() };
     unsafe {
         bpf_loop(
             MAX_PARENT_LOOP,
@@ -114,6 +172,12 @@ pub fn partial_d_path(
             &mut walk_ctx as *mut PathWalkCtx as *mut c_void,
             0u64,
         );
+    }
+    let walk_end = unsafe { bpf_ktime_get_ns() };
+
+    unsafe {
+        *walk_iters = walk_ctx.loop_ctr;
+        *walk_ns = walk_end - walk_start;
     }
 
     let mut assem_ctx = AssembleCtx {
@@ -126,6 +190,7 @@ pub fn partial_d_path(
         is_absolute: walk_ctx.is_absolute,
         ctx,
     };
+    let assembly_start = unsafe { bpf_ktime_get_ns() };
     unsafe {
         // If we have an absolute pathname
         // prepend a / to the path
@@ -145,6 +210,10 @@ pub fn partial_d_path(
             &mut assem_ctx as *mut AssembleCtx as *mut c_void,
             0_u64,
         );
+    }
+    let assembly_end = unsafe { bpf_ktime_get_ns() };
+    unsafe {
+        *assembly_ns = assembly_end - assembly_start;
     }
     assem_ctx.copied as i32
 }
@@ -271,6 +340,8 @@ pub fn try_fslat_exit(
     ret: i64,
     stats_map: &btf_maps::Array<FsLatencyStats, { NUM_PATH_PREFIX as usize }, 0>,
 ) -> Result<u32, u32> {
+    check_prof_reset();
+
     let Some(countptr) = COUNTER.get_ptr_mut(0) else {
         return Err(1);
     };
@@ -285,6 +356,7 @@ pub fn try_fslat_exit(
             }
             let ret = ret as u64;
             let now = unsafe { bpf_ktime_get_ns() };
+            let t_start = now;
             for idx in 0..NUM_PATH_PREFIX {
                 #[allow(static_mut_refs)]
                 let Some(fsstat) = stats_map.get_ptr_mut(idx) else {
@@ -335,6 +407,9 @@ pub fn try_fslat_exit(
 
                         let Ok(_) = ringbuf_put(&eventf, &snapshot, filpop, "ns") else {
                             error!(ctx, "ringbuf_put() failed");
+                            if let Some(drops) = PROF_RINGBUF_DROPS.get_ptr_mut(0) {
+                                unsafe { *drops += 1 };
+                            }
                             break;
                         };
                         unsafe {
@@ -353,6 +428,9 @@ pub fn try_fslat_exit(
                     }
                 }
             }
+            let t_end = unsafe { bpf_ktime_get_ns() };
+            let bucket = log2_bucket(t_end - t_start);
+            hist_increment(&PROF_EXIT_HIST, bucket);
             let _ = PTRLIST.remove(&(pid_tgid));
         }
         None => {}
