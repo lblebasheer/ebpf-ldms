@@ -9,7 +9,7 @@ BindsTo = munge.service
 Type = simple
 EnvironmentFile = /etc/sysconfig/ebpf_ldms
 Environment="LD_LIBRARY_PATH=/opt/ovis-ldms/lib:$LD_LIBRARY_PATH"
-ExecStartPre=bash -c "until /opt/ovis-ldms/sbin/ldms_ls -a munge -h ${EBPF_LDMS_LDMSD_HOST} -p ${EBPF_LDMS_LDMSD_PORT} > /dev/null; do sleep 10; done"
+ExecStartPre=bash -c "until /opt/ovis-ldms/sbin/ldms_ls -a ${EBPF_LDMS_LDMSD_AUTH} -h ${EBPF_LDMS_LDMSD_HOST} -p ${EBPF_LDMS_LDMSD_PORT} > /dev/null; do sleep 10; done"
 ExecStartPre = bpftool map create /sys/fs/bpf/LDMS_SHARED_STREAM type ringbuf entries ${EBPF_LDMS_RING_SIZE} name LDMS_SHARED_STREAM
 ExecStart = /usr/sbin/ebpf_ldms \
                 --host ${EBPF_LDMS_LDMSD_HOST} \
