@@ -23,6 +23,7 @@ pub mod maps;
 #[allow(unnecessary_transmutes)]
 #[allow(unsafe_op_in_unsafe_fn)]
 #[allow(dead_code)]
+#[allow(clippy::all)]
 mod vmlinux;
 use crate::maps::*;
 mod constants;
@@ -36,10 +37,10 @@ fn log2_bucket(val: u64) -> u32 {
 }
 
 fn hist_increment(hist: &HashMap<u32, u64>, bucket: u32) {
-    if let Some(count) = hist.get_ptr_mut(&bucket) {
+    if let Some(count) = hist.get_ptr_mut(bucket) {
         unsafe { *count += 1 };
     } else {
-        let _ = hist.insert(&bucket, &1u64, 0);
+        let _ = hist.insert(bucket, 1u64, 0);
     }
 }
 
@@ -49,11 +50,11 @@ fn check_prof_reset() {
     };
     if unsafe { *ctrl } == 1 {
         for i in 0u32..64 {
-            let _ = PROF_PATH_RES_HIST.remove(&i);
-            let _ = PROF_PATH_WALK_HIST.remove(&i);
-            let _ = PROF_PATH_ASSEMBLY_HIST.remove(&i);
-            let _ = PROF_EXIT_HIST.remove(&i);
-            let _ = PROF_WALK_ITERS_HIST.remove(&i);
+            let _ = PROF_PATH_RES_HIST.remove(i);
+            let _ = PROF_PATH_WALK_HIST.remove(i);
+            let _ = PROF_PATH_ASSEMBLY_HIST.remove(i);
+            let _ = PROF_EXIT_HIST.remove(i);
+            let _ = PROF_WALK_ITERS_HIST.remove(i);
         }
         unsafe { *ctrl = bpf_ktime_get_ns() };
     }
@@ -100,7 +101,7 @@ pub fn try_fslat_entry(ctx: FEntryContext, _filpop: &str) -> Result<u32, u32> {
             timestamp: t_start,
             path: unsafe { *pathbuf_ptr },
         };
-        let _ = PTRLIST.insert(&(ctx.pid(), ctx.tgid()), &entryrec, 0u64);
+        let _ = PTRLIST.insert((ctx.pid(), ctx.tgid()), &entryrec, 0u64);
     }
     // Assembled path has been copied from PATHBUFTMP
     // into PATHBUF and in turn to EntryRec. Clear
@@ -296,7 +297,7 @@ extern "C" fn assemble_pathfrag(index: u32, ctx: *mut AssembleCtx) -> u64 {
         unsafe { (*buf_elem).len as u32 }
     };
     unsafe {
-        let copied = (*ctx).copied as u32;
+        let copied = (*ctx).copied;
         let remaining = PATHFRAGLEN as u32 - copied;
         if !aya_ebpf::check_bounds_signed(copied as i64, 0i64, PATHFRAGLEN as i64) {
             return 1;
@@ -323,9 +324,9 @@ extern "C" fn assemble_pathfrag(index: u32, ctx: *mut AssembleCtx) -> u64 {
                 1u32,
                 0u64,
             );
-            (*ctx).copied = copied as u32 + remaining.min(len) + 1;
+            (*ctx).copied = copied + remaining.min(len) + 1;
         } else {
-            (*ctx).copied = copied as u32 + remaining.min(len);
+            (*ctx).copied = copied + remaining.min(len);
         }
         // Component has been copied. Zero it for
         // the next call into the _entry hook.
@@ -347,84 +348,81 @@ pub fn try_fslat_exit(
     };
     let pid_tgid = (ctx.pid(), ctx.tgid());
 
-    match unsafe { PTRLIST.get(pid_tgid) } {
-        Some(entryrec) => {
-            // Skip failed calls for now
-            if ret < 0 {
-                let _ = PTRLIST.remove(&(pid_tgid));
-                return Err(1);
-            }
-            let ret = ret as u64;
-            let now = unsafe { bpf_ktime_get_ns() };
-            let t_start = now;
-            for idx in 0..NUM_PATH_PREFIX {
-                #[allow(static_mut_refs)]
-                let Some(fsstat) = stats_map.get_ptr_mut(idx) else {
-                    break;
-                };
-                if unsafe {
-                    starts_with(
-                        &(*fsstat).path_prefix,
-                        &entryrec.path,
-                        (*fsstat).pathlen as usize,
-                    )
-                } {
-                    trace!(ctx, "partial_path: {}", unsafe {
-                        core::str::from_utf8_unchecked(&(entryrec.path))
-                    });
-                    if now - unsafe { (*fsstat).lastpublish } > AGG_INTERVAL {
-                        let snapshot: StatsSnapshot;
-                        let eventf: EventFields;
-                        unsafe {
-                            bpf_spin_lock(&mut (*fsstat).lock);
+    if let Some(entryrec) = unsafe { PTRLIST.get(pid_tgid) } {
+        // Skip failed calls for now
+        if ret < 0 {
+            let _ = PTRLIST.remove(pid_tgid);
+            return Err(1);
+        }
+        let ret = ret as u64;
+        let now = unsafe { bpf_ktime_get_ns() };
+        let t_start = now;
+        for idx in 0..NUM_PATH_PREFIX {
+            #[allow(static_mut_refs)]
+            let Some(fsstat) = stats_map.get_ptr_mut(idx) else {
+                break;
+            };
+            if unsafe {
+                starts_with(
+                    &(*fsstat).path_prefix,
+                    &entryrec.path,
+                    (*fsstat).pathlen as usize,
+                )
+            } {
+                trace!(ctx, "partial_path: {}", unsafe {
+                    core::str::from_utf8_unchecked(&(entryrec.path))
+                });
+                if now - unsafe { (*fsstat).lastpublish } > AGG_INTERVAL {
+                    let snapshot: StatsSnapshot;
+                    let eventf: EventFields;
+                    unsafe {
+                        bpf_spin_lock(&mut (*fsstat).lock);
 
-                            update_stats_locked(fsstat, now - entryrec.timestamp, ret);
+                        update_stats_locked(fsstat, now - entryrec.timestamp, ret);
 
-                            snapshot = StatsSnapshot {
-                                pathlen: (*fsstat).pathlen,
-                                path_prefix: (*fsstat).path_prefix,
-                                min: (*fsstat).min,
-                                max: (*fsstat).max,
-                                total_lat: (*fsstat).total_lat,
-                                total_bytes: (*fsstat).total_bytes,
-                                count: (*fsstat).count,
-                            };
-
-                            clear_stats_locked(fsstat, now);
-
-                            eventf = EventFields {
-                                id: "fslat/v2",
-                                monotonic: now,
-                                seq: *countptr,
-                            };
-                            bpf_spin_unlock(&mut (*fsstat).lock);
-                        }
-
-                        let Ok(_) = ringbuf_put(&eventf, &snapshot, filpop, "ns") else {
-                            error!(ctx, "ringbuf_put() failed");
-                            if let Some(drops) = PROF_RINGBUF_DROPS.get_ptr_mut(0) {
-                                unsafe { *drops += 1 };
-                            }
-                            break;
+                        snapshot = StatsSnapshot {
+                            pathlen: (*fsstat).pathlen,
+                            path_prefix: (*fsstat).path_prefix,
+                            min: (*fsstat).min,
+                            max: (*fsstat).max,
+                            total_lat: (*fsstat).total_lat,
+                            total_bytes: (*fsstat).total_bytes,
+                            count: (*fsstat).count,
                         };
-                        unsafe {
-                            *countptr += 1;
+
+                        clear_stats_locked(fsstat, now);
+
+                        eventf = EventFields {
+                            id: "fslat/v2",
+                            monotonic: now,
+                            seq: *countptr,
+                        };
+                        bpf_spin_unlock(&mut (*fsstat).lock);
+                    }
+
+                    let Ok(_) = ringbuf_put(&eventf, &snapshot, filpop, "ns") else {
+                        error!(ctx, "ringbuf_put() failed");
+                        if let Some(drops) = PROF_RINGBUF_DROPS.get_ptr_mut(0) {
+                            unsafe { *drops += 1 };
                         }
-                    } else {
-                        unsafe {
-                            bpf_spin_lock(&mut (*fsstat).lock);
-                            update_stats_locked(fsstat, now - entryrec.timestamp, ret);
-                            bpf_spin_unlock(&mut (*fsstat).lock);
-                        }
+                        break;
+                    };
+                    unsafe {
+                        *countptr += 1;
+                    }
+                } else {
+                    unsafe {
+                        bpf_spin_lock(&mut (*fsstat).lock);
+                        update_stats_locked(fsstat, now - entryrec.timestamp, ret);
+                        bpf_spin_unlock(&mut (*fsstat).lock);
                     }
                 }
             }
-            let t_end = unsafe { bpf_ktime_get_ns() };
-            let bucket = log2_bucket(t_end - t_start);
-            hist_increment(&PROF_EXIT_HIST, bucket);
-            let _ = PTRLIST.remove(&(pid_tgid));
         }
-        None => {}
+        let t_end = unsafe { bpf_ktime_get_ns() };
+        let bucket = log2_bucket(t_end - t_start);
+        hist_increment(&PROF_EXIT_HIST, bucket);
+        let _ = PTRLIST.remove(pid_tgid);
     };
     Ok(0)
 }

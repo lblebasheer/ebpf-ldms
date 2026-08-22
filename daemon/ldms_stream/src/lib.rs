@@ -69,7 +69,7 @@ impl SockStream {
         Ok(())
     }
 
-    pub fn close(&mut self) -> () {
+    pub fn close(&mut self) {
         unsafe { raw::ldms_xprt_close(self.xprt_handle) }
     }
 

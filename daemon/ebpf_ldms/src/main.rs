@@ -141,7 +141,7 @@ fn main() -> anyhow::Result<()> {
     let mut cli = cli::EbpfLdms::parse();
     Ftail::new()
         .console_env_level() // log to console
-        .single_file(&Path::new(&cli.logfile), true, LevelFilter::Debug)
+        .single_file(Path::new(&cli.logfile), true, LevelFilter::Debug)
         .max_file_size(100)
         .init()?; // initialize logger
     cli.parse_ratelimit();
