@@ -377,11 +377,6 @@ pub fn try_fslat_exit(
                         let eventf: EventFields;
                         unsafe {
                             bpf_spin_lock(&mut (*fsstat).lock);
-                            if (*fsstat).is_frozen {
-                                bpf_spin_unlock(&mut (*fsstat).lock);
-                                break;
-                            }
-                            (*fsstat).is_frozen = true;
 
                             update_stats_locked(fsstat, now - entryrec.timestamp, ret);
 
@@ -395,7 +390,7 @@ pub fn try_fslat_exit(
                                 count: (*fsstat).count,
                             };
 
-                            clear_and_unfreeze_locked(fsstat, now);
+                            clear_stats_locked(fsstat, now);
 
                             eventf = EventFields {
                                 id: "fslat/v2",
@@ -418,10 +413,6 @@ pub fn try_fslat_exit(
                     } else {
                         unsafe {
                             bpf_spin_lock(&mut (*fsstat).lock);
-                            if (*fsstat).is_frozen {
-                                bpf_spin_unlock(&mut (*fsstat).lock);
-                                break;
-                            }
                             update_stats_locked(fsstat, now - entryrec.timestamp, ret);
                             bpf_spin_unlock(&mut (*fsstat).lock);
                         }
@@ -454,7 +445,7 @@ pub unsafe fn update_stats_locked(fsstat: *mut FsLatencyStats, latency: u64, byt
 }
 
 /// Caller must hold fsstat's spinlock.
-pub unsafe fn clear_and_unfreeze_locked(fsstat: *mut FsLatencyStats, now: u64) {
+pub unsafe fn clear_stats_locked(fsstat: *mut FsLatencyStats, now: u64) {
     unsafe {
         (*fsstat).lastpublish = now;
         (*fsstat).min = u64::MAX;
@@ -465,7 +456,6 @@ pub unsafe fn clear_and_unfreeze_locked(fsstat: *mut FsLatencyStats, now: u64) {
         write_volatile(&raw mut (*fsstat).total_lat, 0);
         write_volatile(&raw mut (*fsstat).total_bytes, 0);
         write_volatile(&raw mut (*fsstat).count, 0);
-        write_volatile(&raw mut (*fsstat).is_frozen, false);
     }
 }
 

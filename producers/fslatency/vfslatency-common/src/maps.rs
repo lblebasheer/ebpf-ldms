@@ -110,7 +110,6 @@ pub struct FsLatencyStats {
     pub total_bytes: u64,
     pub count: u64,
     pub lastpublish: u64,
-    pub is_frozen: bool,
 }
 
 #[repr(C)]
